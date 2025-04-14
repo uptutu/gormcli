@@ -318,7 +318,7 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 			return pkg, "[]" + sub
 
 		default:
-			panic(fmt.Sprintf("unsupported type expr: %#v", t))
+			panic(fmt.Sprintf("method %s.%s unsupported type expr: %#v", m.Interface.Name, m.Name, t))
 		}
 	}
 
