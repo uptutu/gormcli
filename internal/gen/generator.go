@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -70,6 +69,7 @@ func (g *Generator) Gen() error {
 			panic(fmt.Sprintf("failed to create file %v, got error %v", outputFile, err))
 		}
 
+		fmt.Printf("Generating file %s from %s...\n", outputFile, file.inputPath)
 		err = tmpl.Execute(f, file)
 		if err != nil {
 			panic(fmt.Sprintf("failed to render template %v, got error %v", file.inputPath, err))
@@ -127,16 +127,12 @@ type (
 		Interface Interface
 	}
 	Param struct {
-		Name    string
-		Package string
-		Type    string
+		Name string
+		Type string
 	}
 )
 
 func (p Param) GoFullType() string {
-	if p.Package != "" {
-		return p.Package + "." + p.Type
-	}
 	return p.Type
 }
 
@@ -145,7 +141,7 @@ func (m Method) ParamsString() string {
 	hasCtx := false
 
 	for _, p := range m.Params {
-		if p.Name == "ctx" || (p.Package == "context" && p.Type == "Context") {
+		if p.Name == "ctx" || p.Type == "context.Context" {
 			hasCtx = true
 			p.Name = "ctx"
 		}
@@ -172,63 +168,6 @@ func (m Method) ResultString() string {
 	return fmt.Sprintf("%sInterface[T]", m.Interface.Name)
 }
 
-var placeholderRegex = regexp.MustCompile(`@@[A-Za-z0-9_.]+|@[A-Za-z0-9_.]+`)
-
-func (m Method) PlaceholderMapCode(sql string) (string, error) {
-	paramMap := make(map[string]string)
-	for _, p := range m.Params {
-		paramMap[p.Name] = p.Name
-	}
-
-	matches := placeholderRegex.FindAllString(sql, -1)
-	if len(matches) == 0 {
-		return "", nil
-	}
-
-	var sb strings.Builder
-	sb.WriteString("placeholderMap := map[string]any{\n")
-	seen := make(map[string]bool)
-
-	for _, ph := range matches {
-		if seen[ph] {
-			continue
-		}
-		seen[ph] = true
-
-		switch {
-		case ph == "@@table":
-			sb.WriteString(`  "@table": clause.CurrentTable,` + "\n")
-
-		case strings.HasPrefix(ph, "@@"):
-			paramName := ph[2:]
-			base := paramName
-			if idx := strings.Index(paramName, "."); idx != -1 {
-				base = paramName[:idx]
-			}
-			if _, ok := paramMap[base]; !ok {
-				return "", fmt.Errorf("missing param %q for placeholder %q", base, ph)
-			}
-			mapKey := "@" + paramName
-			sb.WriteString(fmt.Sprintf("  %q: gorm.Expr(\"?\", %s),\n", mapKey, paramName))
-		case strings.HasPrefix(ph, "@"):
-			paramName := ph[1:]
-			base := paramName
-			if idx := strings.Index(paramName, "."); idx != -1 {
-				base = paramName[:idx]
-			}
-			if _, ok := paramMap[base]; !ok {
-				return "", fmt.Errorf("missing param %q for placeholder %q, got %v", base, ph, paramMap)
-			}
-			sb.WriteString(fmt.Sprintf("  %q: %s,\n", paramName, paramName))
-		default:
-			return "", fmt.Errorf("unsupported placeholder: %s", ph)
-		}
-	}
-
-	sb.WriteString("}\n")
-	return sb.String(), nil
-}
-
 func (m Method) Body() string {
 	if m.SQL.Raw != "" {
 		return m.finishMethodBody()
@@ -236,41 +175,27 @@ func (m Method) Body() string {
 	return m.chainMethodBody()
 }
 
-func (m Method) processSQL(sql string) (string, string, string) {
-	sqlSnippet, err := RenderSQLTemplate(m.SQL.Raw)
+func (m Method) processSQL(sql string) string {
+	sqlSnippet, err := RenderSQLTemplate(sql)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parsing SQL template for %s.%s %q: %v", m.Interface.Name, m.Name, m.SQL, err))
 	}
 
-	phCode, err := m.PlaceholderMapCode(m.SQL.Raw)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to generating placeholder map for %s.%s %s, got: %v", m.Interface.Name, m.Name, m.SQL, err))
-	}
-	phVar := ""
-	if strings.TrimSpace(phCode) != "" {
-		phVar = ", placeholderMap"
-	}
-	return sqlSnippet, phCode, phVar
+	return sqlSnippet
 }
 
 func (m Method) finishMethodBody() string {
-	sqlSnippet, phCode, phVar := m.processSQL(m.SQL.Raw)
+	sqlSnippet := m.processSQL(m.SQL.Raw)
 
 	if len(m.Result) == 1 {
 		return fmt.Sprintf(`%s
-
-%s
-
-return e.Exec(ctx, sb.String()%s)`, sqlSnippet, phCode, phVar)
+return e.Exec(ctx, sb.String(), params...)`, sqlSnippet)
 	}
 
 	return fmt.Sprintf(`%s
-
-%s
-
 var result %s
-err := e.Raw(sb.String()%s).Scan(ctx, &result)
-return result, err`, sqlSnippet, phCode, m.Result[0].GoFullType(), phVar)
+err := e.Raw(sb.String(), params...).Scan(ctx, &result)
+return result, err`, sqlSnippet, m.Result[0].GoFullType())
 }
 
 func (m Method) chainMethodBody() string {
@@ -283,15 +208,13 @@ func (m Method) chainMethodBody() string {
 		sql = m.SQL.Where
 	}
 
-	sqlSnippet, phCode, phVar := m.processSQL(sql)
+	sqlSnippet := m.processSQL(sql)
 
 	return fmt.Sprintf(`%s
 
-%s
+e.%s(sb.String(), params...)
 
-e.%s(sb.String()%s)
-
-return e`, sqlSnippet, phCode, callMethod, phVar)
+return e`, sqlSnippet, callMethod)
 }
 
 func (m Method) parseParams(fields *ast.FieldList) []Param {
@@ -299,32 +222,28 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 		return nil
 	}
 
-	var parseType func(e ast.Expr) (string, string)
-	parseType = func(e ast.Expr) (string, string) {
-		switch t := e.(type) {
+	var parseExprType func(e ast.Expr) string
+	parseExprType = func(expr ast.Expr) string {
+		switch t := expr.(type) {
 		case *ast.Ident:
-			return "", t.Name
+			return t.Name
 		case *ast.SelectorExpr:
-			if x, ok := t.X.(*ast.Ident); ok {
-				return x.Name, t.Sel.Name // pkg="models", typ="User"
-			}
-			panic("unsupported nested selector expr")
-
+			// e.g. models.User
+			return parseExprType(t.X) + "." + t.Sel.Name
 		case *ast.ArrayType:
-			if t.Len != nil {
-				panic("fixed-length array not supported")
-			}
-			pkg, sub := parseType(t.Elt) // 递归解析切片元素类型
-			return pkg, "[]" + sub
-
+			// slice type: "[]" + element type
+			return "[]" + parseExprType(t.Elt)
+		case *ast.StarExpr:
+			// pointer type: "*" + underlying type
+			return "*" + parseExprType(t.X)
 		default:
-			panic(fmt.Sprintf("method %s.%s unsupported type expr: %#v", m.Interface.Name, m.Name, t))
+			return fmt.Sprintf("unknown")
 		}
 	}
 
 	var params []Param
 	for _, field := range fields.List {
-		pkg, typ := parseType(field.Type)
+		typ := parseExprType(field.Type)
 
 		names := field.Names
 		if len(names) == 0 {
@@ -333,9 +252,8 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 
 		for _, n := range names {
 			params = append(params, Param{
-				Name:    n.Name,
-				Package: pkg,
-				Type:    typ,
+				Name: n.Name,
+				Type: typ,
 			})
 		}
 	}

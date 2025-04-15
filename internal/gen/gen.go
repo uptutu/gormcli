@@ -19,7 +19,6 @@ func New() *cobra.Command {
 				Name: filepath.Base(output),
 			}
 
-			fmt.Println(input, output)
 			err := g.Process(input, output)
 			if err != nil {
 				return fmt.Errorf("Error processing %s: %v", input, err)

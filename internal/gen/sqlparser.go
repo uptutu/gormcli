@@ -3,6 +3,7 @@ package gen
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -16,13 +17,40 @@ type TextNode struct {
 	Text string
 }
 
+var rePlaceholder = regexp.MustCompile(`@@table|@@[A-Za-z0-9_.]+|@[A-Za-z0-9_.]+`)
+
 func (t *TextNode) Emit(indent, target string) string {
-	s := strings.TrimSpace(t.Text)
-	if s == "" {
+	str := strings.TrimSpace(t.Text)
+	if str == "" {
 		return ""
 	}
-	s = strings.ReplaceAll(s, "\"", "\\\"")
-	return fmt.Sprintf("%s%s.WriteString(\"%s \")\n", indent, target, s)
+	// we'll parse placeholders
+	var code strings.Builder
+	// rewrite placeholders to "?" in final text
+	replaced := rePlaceholder.ReplaceAllStringFunc(str, func(ph string) string {
+		switch {
+		case ph == "@@table":
+			code.WriteString(fmt.Sprintf("%sparams = append(params, clause.CurrentTable)\n", indent))
+			return "?"
+		case strings.HasPrefix(ph, "@@"):
+			// e.g. @@foo => gorm.Expr("?", foo)
+			key := ph[2:]
+			code.WriteString(fmt.Sprintf("%sparams = append(params, gorm.Expr(\"?\", %s))\n", indent, key))
+			return "?"
+		case strings.HasPrefix(ph, "@"):
+			// e.g. @foo => "foo"
+			key := ph[1:]
+			code.WriteString(fmt.Sprintf("%sparams = append(params, %s)\n", indent, key))
+			return "?"
+		}
+		return ph
+	})
+	replaced = strings.ReplaceAll(replaced, "\"", "\\\"")
+
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("%s%s.WriteString(%q)\n", indent, target, replaced))
+	out.WriteString(code.String())
+	return out.String()
 }
 
 // FuncNode for {{where}} / {{set}} blocks.
@@ -42,6 +70,15 @@ func (f *FuncNode) Emit(indent, target string) string {
 	b.WriteString(fmt.Sprintf("%s\tif c != \"\" {\n", indent))
 	switch f.Name {
 	case "where":
+		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\"WHERE \")\n", indent, target))
+		b.WriteString(fmt.Sprintf("%s\t\tvar cond = strings.TrimSpace(c)\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\tif len(cond) >= 3 && strings.EqualFold(cond[len(cond)-3:], \"AND\") {\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t\tcond = strings.TrimSpace(cond[:len(cond)-3])\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t} else if len(cond) >= 2 && strings.EqualFold(cond[len(cond)-2:], \"OR\") {\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t\tcond = strings.TrimSpace(cond[:len(cond)-2])\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t}\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(cond)\n", indent, target))
+
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\"WHERE \")\n", indent, target))
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(c)\n", indent, target))
 	case "set":
@@ -290,6 +327,7 @@ func RenderSQLTemplate(tmpl string) (string, error) {
 
 	var sb strings.Builder
 	sb.WriteString("var sb strings.Builder\n")
+	sb.WriteString("var params = make([]any, 0, 10)\n\n")
 	for _, n := range root {
 		sb.WriteString(n.Emit("", "sb"))
 	}

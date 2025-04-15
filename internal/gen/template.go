@@ -4,9 +4,9 @@ var pkgTmpl = `package {{.Package}}
 
 import (
 	"gorm.io/gorm/g"
-	{{range .Imports}}
+	{{range .Imports -}}
 		{{.Name}} {{.Path}}
-	{{end}}
+	{{end -}}
 )
 
 {{range .Interfaces}}
