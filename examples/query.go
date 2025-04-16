@@ -9,7 +9,7 @@ import (
 type Query[T any] interface {
 	// GetByID query data by id and return it as struct
 	//
-	// SELECT * FROM @@table WHERE id=@id
+	// SELECT * FROM @@table WHERE id=@id AND name = "\@name"
 	GetByID(id int) (T, error)
 
 	// SELECT * FROM @@table WHERE @@column=@value
@@ -34,8 +34,8 @@ type Query[T any] interface {
 
 	// SELECT * FROM @@table
 	// {{where}}
-	//   {{for _,user:=range users}}
-	//     {{if user.Name !="" && user.Age >0}}
+	//   {{for _, user := range users}}
+	//     {{if user.Name != "" && user.Age > 0}}
 	//       (username = @user.Name AND age=@user.Age AND role LIKE concat("%",@user.Role,"%")) OR
 	//     {{end}}
 	//   {{end}}

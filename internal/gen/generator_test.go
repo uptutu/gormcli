@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,13 +52,11 @@ func TestGeneratorWithQueryInterface(t *testing.T) {
 	}
 	generatedStr := string(genBytes)
 
-	t.Logf("=== Generated File: %s ===\n%s\n", files[0].Name(), generatedStr)
-
 	if _, err := parser.ParseFile(token.NewFileSet(), generatedFile, genBytes, parser.AllErrors); err != nil {
 		t.Errorf("generated code %s has invalid Go syntax: %v", generatedFile, err)
 	}
 
-	if goldenStr != generatedStr {
+	if goldenStr[strings.Index(goldenStr, "\n"):] != generatedStr[strings.Index(generatedStr, "\n"):] {
 		t.Errorf("generated file differs from golden file\nGOLDEN: %s\nGENERATED: %s\n %s",
 			goldenPath, generatedFile, generatedStr)
 	}

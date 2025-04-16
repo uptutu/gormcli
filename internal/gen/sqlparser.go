@@ -24,32 +24,34 @@ func (t *TextNode) Emit(indent, target string) string {
 	if str == "" {
 		return ""
 	}
-	// we'll parse placeholders
-	var code strings.Builder
-	// rewrite placeholders to "?" in final text
+
+	escapedToken := "___ESCAPED_AT___"
+	str = strings.ReplaceAll(str, "\\@", escapedToken)
+
+	var params []string
 	replaced := rePlaceholder.ReplaceAllStringFunc(str, func(ph string) string {
 		switch {
 		case ph == "@@table":
-			code.WriteString(fmt.Sprintf("%sparams = append(params, clause.CurrentTable)\n", indent))
+			params = append(params, "clause.CurrentTable")
 			return "?"
 		case strings.HasPrefix(ph, "@@"):
-			// e.g. @@foo => gorm.Expr("?", foo)
-			key := ph[2:]
-			code.WriteString(fmt.Sprintf("%sparams = append(params, gorm.Expr(\"?\", %s))\n", indent, key))
+			params = append(params, fmt.Sprintf("gorm.Expr(\"?\", %s)", ph[2:]))
 			return "?"
 		case strings.HasPrefix(ph, "@"):
-			// e.g. @foo => "foo"
-			key := ph[1:]
-			code.WriteString(fmt.Sprintf("%sparams = append(params, %s)\n", indent, key))
+			params = append(params, ph[1:])
 			return "?"
 		}
 		return ph
 	})
+
+	replaced = strings.ReplaceAll(replaced, escapedToken, "@")
 	replaced = strings.ReplaceAll(replaced, "\"", "\\\"")
 
 	var out strings.Builder
 	out.WriteString(fmt.Sprintf("%s%s.WriteString(%q)\n", indent, target, replaced))
-	out.WriteString(code.String())
+	if len(params) > 0 {
+		out.WriteString(fmt.Sprintf("%sparams = append(params, %s)\n", indent, strings.Join(params, ", ")))
+	}
 	return out.String()
 }
 
@@ -71,25 +73,20 @@ func (f *FuncNode) Emit(indent, target string) string {
 	switch f.Name {
 	case "where":
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\"WHERE \")\n", indent, target))
-		b.WriteString(fmt.Sprintf("%s\t\tvar cond = strings.TrimSpace(c)\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\tif len(cond) >= 3 && strings.EqualFold(cond[len(cond)-3:], \"AND\") {\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tcond = strings.TrimSpace(cond[:len(cond)-3])\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t} else if len(cond) >= 2 && strings.EqualFold(cond[len(cond)-2:], \"OR\") {\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tcond = strings.TrimSpace(cond[:len(cond)-2])\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\tif len(c) >= 3 && strings.EqualFold(c[len(c)-3:], \"AND\") {\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(c[:len(c)-3])\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t} else if len(c) >= 2 && strings.EqualFold(c[len(c)-2:], \"OR\") {\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(c[:len(c)-2])\n", indent))
 		b.WriteString(fmt.Sprintf("%s\t\t}\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(cond)\n", indent, target))
-
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\"WHERE \")\n", indent, target))
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(c)\n", indent, target))
 	case "set":
 		b.WriteString(fmt.Sprintf("%s\t\tif strings.HasSuffix(c, \",\") {\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimRight(c, \",\")\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(c)\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(strings.TrimRight(c, \",\"))\n", indent))
 		b.WriteString(fmt.Sprintf("%s\t\t}\n", indent))
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\"SET \")\n", indent, target))
 		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(c)\n", indent, target))
 	default:
-		// unknown block
 		panic(fmt.Sprintf("unsupported func %q in sql tempalte\n", f.Name))
 	}
 	b.WriteString(fmt.Sprintf("%s\t}\n", indent))
@@ -150,12 +147,10 @@ func (in *IfNode) Emit(indent, target string) string {
 
 // stackItem holds a node or ifNode under construction.
 type stackItem struct {
-	node   Node
-	ifNode *IfNode // non-nil if it's an if
-	// which branch index are we currently filling?
-	branchIdx int
-	// did we switch to else?
-	elsePart bool
+	node      Node
+	ifNode    *IfNode // non-nil if it's an if
+	branchIdx int     // which branch index are we currently filling?
+	elsePart  bool
 }
 
 // RenderSQLTemplate parses the template string and returns Go code or an error.
@@ -325,11 +320,34 @@ func RenderSQLTemplate(tmpl string) (string, error) {
 		return "", errors.New("unclosed block(s) at EOF")
 	}
 
-	var sb strings.Builder
-	sb.WriteString("var sb strings.Builder\n")
-	sb.WriteString("var params = make([]any, 0, 10)\n\n")
+	var (
+		sb          strings.Builder
+		codes       []string
+		paramsCount int
+	)
+
 	for _, n := range root {
-		sb.WriteString(n.Emit("", "sb"))
+		code := n.Emit("", "sb")
+		count, baseCount := 0, 1
+
+		for _, line := range strings.Split(code, "\n") {
+			if strings.Index(code, "\tfor ") > 0 {
+				baseCount = 4
+			}
+			if strings.Contains(line, "params = append(params") {
+				count += strings.Count(line, ",") * baseCount
+			}
+		}
+
+		paramsCount += count
+		codes = append(codes, n.Emit("", "sb"))
+	}
+
+	sb.WriteString("var sb strings.Builder\n")
+	sb.WriteString(fmt.Sprintf("params := make([]any, 0, %d)\n\n", paramsCount))
+
+	for _, code := range codes {
+		sb.WriteString(code)
 	}
 	return sb.String(), nil
 }

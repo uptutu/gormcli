@@ -1,4 +1,4 @@
-package g
+package output
 
 import (
 	"context"
@@ -34,11 +34,10 @@ type QueryImpl[T any] struct {
 
 func (e QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 2)
 
-	sb.WriteString("SELECT * FROM ? WHERE id=?")
-	params = append(params, clause.CurrentTable)
-	params = append(params, id)
+	sb.WriteString("SELECT * FROM ? WHERE id=? AND name = \\\"@name\\\"")
+	params = append(params, clause.CurrentTable, id)
 
 	var result T
 	err := e.Raw(sb.String(), params...).Scan(ctx, &result)
@@ -47,12 +46,10 @@ func (e QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
 
 func (e QueryImpl[T]) FilterWithColumn(ctx context.Context, column string, value string) (T, error) {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 4)
 
 	sb.WriteString("SELECT * FROM ? WHERE ?=?")
-	params = append(params, clause.CurrentTable)
-	params = append(params, gorm.Expr("?", column))
-	params = append(params, value)
+	params = append(params, clause.CurrentTable, gorm.Expr("?", column), value)
 
 	var result T
 	err := e.Raw(sb.String(), params...).Scan(ctx, &result)
@@ -61,7 +58,7 @@ func (e QueryImpl[T]) FilterWithColumn(ctx context.Context, column string, value
 
 func (e QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, error) {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 2)
 
 	sb.WriteString("SELECT * FROM users")
 	if user.ID > 0 {
@@ -79,7 +76,7 @@ func (e QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, error
 
 func (e QueryImpl[T]) Update(ctx context.Context, user models.User, id int) error {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 4)
 
 	sb.WriteString("UPDATE ?")
 	params = append(params, clause.CurrentTable)
@@ -101,8 +98,7 @@ func (e QueryImpl[T]) Update(ctx context.Context, user models.User, id int) erro
 		c := strings.TrimSpace(tmp.String())
 		if c != "" {
 			if strings.HasSuffix(c, ",") {
-				c = strings.TrimRight(c, ",")
-				c = strings.TrimSpace(c)
+				c = strings.TrimSpace(strings.TrimRight(c, ","))
 			}
 			sb.WriteString("SET ")
 			sb.WriteString(c)
@@ -116,7 +112,7 @@ func (e QueryImpl[T]) Update(ctx context.Context, user models.User, id int) erro
 
 func (e QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, error) {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 13)
 
 	sb.WriteString("SELECT * FROM ?")
 	params = append(params, clause.CurrentTable)
@@ -125,21 +121,17 @@ func (e QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, err
 		for _, user := range users {
 			if user.Name != "" && user.Age > 0 {
 				tmp.WriteString("(username = ? AND age=? AND role LIKE concat(\\\"%\\\",?,\\\"%\\\")) OR")
-				params = append(params, user.Name)
-				params = append(params, user.Age)
-				params = append(params, user.Role)
+				params = append(params, user.Name, user.Age, user.Role)
 			}
 		}
 		c := strings.TrimSpace(tmp.String())
 		if c != "" {
 			sb.WriteString("WHERE ")
-			cond := strings.TrimSpace(c)
-			if len(cond) >= 3 && strings.EqualFold(cond[len(cond)-3:], "AND") {
-				cond = strings.TrimSpace(cond[:len(cond)-3])
-			} else if len(cond) >= 2 && strings.EqualFold(cond[len(cond)-2:], "OR") {
-				cond = strings.TrimSpace(cond[:len(cond)-2])
+			if len(c) >= 3 && strings.EqualFold(c[len(c)-3:], "AND") {
+				c = strings.TrimSpace(c[:len(c)-3])
+			} else if len(c) >= 2 && strings.EqualFold(c[len(c)-2:], "OR") {
+				c = strings.TrimSpace(c[:len(c)-2])
 			}
-			sb.WriteString(cond)
 			sb.WriteString("WHERE ")
 			sb.WriteString(c)
 		}
@@ -152,11 +144,10 @@ func (e QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, err
 
 func (e QueryImpl[T]) FilterByNameAndAge(ctx context.Context, name string, age int) QueryInterface[T] {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 2)
 
 	sb.WriteString("name=? AND age=?")
-	params = append(params, name)
-	params = append(params, age)
+	params = append(params, name, age)
 
 	e.Where(sb.String(), params...)
 
@@ -165,7 +156,7 @@ func (e QueryImpl[T]) FilterByNameAndAge(ctx context.Context, name string, age i
 
 func (e QueryImpl[T]) FilterWithTime(ctx context.Context, start time.Time, end time.Time) ([]T, error) {
 	var sb strings.Builder
-	params := make([]any, 0, 10)
+	params := make([]any, 0, 3)
 
 	sb.WriteString("SELECT * FROM ?")
 	params = append(params, clause.CurrentTable)
@@ -182,13 +173,11 @@ func (e QueryImpl[T]) FilterWithTime(ctx context.Context, start time.Time, end t
 		c := strings.TrimSpace(tmp.String())
 		if c != "" {
 			sb.WriteString("WHERE ")
-			cond := strings.TrimSpace(c)
-			if len(cond) >= 3 && strings.EqualFold(cond[len(cond)-3:], "AND") {
-				cond = strings.TrimSpace(cond[:len(cond)-3])
-			} else if len(cond) >= 2 && strings.EqualFold(cond[len(cond)-2:], "OR") {
-				cond = strings.TrimSpace(cond[:len(cond)-2])
+			if len(c) >= 3 && strings.EqualFold(c[len(c)-3:], "AND") {
+				c = strings.TrimSpace(c[:len(c)-3])
+			} else if len(c) >= 2 && strings.EqualFold(c[len(c)-2:], "OR") {
+				c = strings.TrimSpace(c[:len(c)-2])
 			}
-			sb.WriteString(cond)
 			sb.WriteString("WHERE ")
 			sb.WriteString(c)
 		}
