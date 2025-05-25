@@ -8,28 +8,27 @@ import (
 	models "gorm.io/cmd/gorm/examples/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"gorm.io/gorm/g"
 )
 
-func Query[T any](db *gorm.DB, opts ...g.Option) QueryInterface[T] {
+func Query[T any](db *gorm.DB, opts ...clause.Expression) QueryInterface[T] {
 	return QueryImpl[T]{
-		Interface: g.G[T](db, opts...),
+		Interface: gorm.G[T](db, opts...),
 	}
 }
 
 type QueryInterface[T any] interface {
-	g.ChainInterface[T]
+	gorm.ChainInterface[T]
 	GetByID(ctx context.Context, id int) (T, error)
 	FilterWithColumn(ctx context.Context, column string, value string) (T, error)
 	QueryWith(ctx context.Context, user models.User) (T, error)
-	Update(ctx context.Context, user models.User, id int) error
+	UpdateInfo(ctx context.Context, user models.User, id int) error
 	Filter(ctx context.Context, users []models.User) ([]T, error)
 	FilterByNameAndAge(ctx context.Context, name string, age int) QueryInterface[T]
 	FilterWithTime(ctx context.Context, start time.Time, end time.Time) ([]T, error)
 }
 
 type QueryImpl[T any] struct {
-	g.Interface[T]
+	gorm.Interface[T]
 }
 
 func (e QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
@@ -74,7 +73,7 @@ func (e QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, error
 	return result, err
 }
 
-func (e QueryImpl[T]) Update(ctx context.Context, user models.User, id int) error {
+func (e QueryImpl[T]) UpdateInfo(ctx context.Context, user models.User, id int) error {
 	var sb strings.Builder
 	params := make([]any, 0, 4)
 

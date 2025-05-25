@@ -30,7 +30,7 @@ type Query[T any] interface {
 	//    {{if user.Age >= 18}} is_adult=1 {{else}} is_adult=0 {{end}}
 	//  {{end}}
 	// WHERE id=@id
-	Update(user models.User, id int) error
+	UpdateInfo(user models.User, id int) error
 
 	// SELECT * FROM @@table
 	// {{where}}

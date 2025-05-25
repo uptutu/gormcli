@@ -3,7 +3,8 @@ package gen
 var pkgTmpl = `package {{.Package}}
 
 import (
-	"gorm.io/gorm/g"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	{{range .Imports -}}
 		{{.Name}} {{.Path}}
 	{{end -}}
@@ -11,21 +12,21 @@ import (
 
 {{range .Interfaces}}
 {{$IfaceName := .Name}}
-func {{$IfaceName}}[T any](db *gorm.DB, opts ...g.Option) {{$IfaceName}}Interface[T] {
+func {{$IfaceName}}[T any](db *gorm.DB, opts ...clause.Expression) {{$IfaceName}}Interface[T] {
 	return {{$IfaceName}}Impl[T]{
-		Interface: g.G[T](db, opts...),
+		Interface: gorm.G[T](db, opts...),
 	}
 }
 
 type {{$IfaceName}}Interface[T any] interface {
-	g.ChainInterface[T]
+	gorm.ChainInterface[T]
 	{{range .Methods -}}
 	{{.Name}}({{.ParamsString}}) ({{.ResultString}})
 	{{end}}
 }
 
 type {{$IfaceName}}Impl[T any] struct {
-	g.Interface[T]
+	gorm.Interface[T]
 }
 
 {{range .Methods}}
