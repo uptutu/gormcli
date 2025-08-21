@@ -12,28 +12,28 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func Query[T any](db *gorm.DB, opts ...clause.Expression) QueryInterface[T] {
-	return QueryImpl[T]{
+func Query[T any](db *gorm.DB, opts ...clause.Expression) _QueryInterface[T] {
+	return _QueryImpl[T]{
 		Interface: gorm.G[T](db, opts...),
 	}
 }
 
-type QueryInterface[T any] interface {
+type _QueryInterface[T any] interface {
 	gorm.ChainInterface[T]
 	GetByID(ctx context.Context, id int) (T, error)
 	FilterWithColumn(ctx context.Context, column string, value string) (T, error)
 	QueryWith(ctx context.Context, user models.User) (T, error)
 	UpdateInfo(ctx context.Context, user models.User, id int) error
 	Filter(ctx context.Context, users []models.User) ([]T, error)
-	FilterByNameAndAge(ctx context.Context, name string, age int) QueryInterface[T]
+	FilterByNameAndAge(ctx context.Context, name string, age int) _QueryInterface[T]
 	FilterWithTime(ctx context.Context, start time.Time, end time.Time) ([]T, error)
 }
 
-type QueryImpl[T any] struct {
+type _QueryImpl[T any] struct {
 	gorm.Interface[T]
 }
 
-func (e QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
+func (e _QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
 	var sb strings.Builder
 	params := make([]any, 0, 2)
 
@@ -45,7 +45,7 @@ func (e QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
 	return result, err
 }
 
-func (e QueryImpl[T]) FilterWithColumn(ctx context.Context, column string, value string) (T, error) {
+func (e _QueryImpl[T]) FilterWithColumn(ctx context.Context, column string, value string) (T, error) {
 	var sb strings.Builder
 	params := make([]any, 0, 4)
 
@@ -57,7 +57,7 @@ func (e QueryImpl[T]) FilterWithColumn(ctx context.Context, column string, value
 	return result, err
 }
 
-func (e QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, error) {
+func (e _QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, error) {
 	var sb strings.Builder
 	params := make([]any, 0, 2)
 
@@ -75,7 +75,7 @@ func (e QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, error
 	return result, err
 }
 
-func (e QueryImpl[T]) UpdateInfo(ctx context.Context, user models.User, id int) error {
+func (e _QueryImpl[T]) UpdateInfo(ctx context.Context, user models.User, id int) error {
 	var sb strings.Builder
 	params := make([]any, 0, 4)
 
@@ -111,7 +111,7 @@ func (e QueryImpl[T]) UpdateInfo(ctx context.Context, user models.User, id int) 
 	return e.Exec(ctx, sb.String(), params...)
 }
 
-func (e QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, error) {
+func (e _QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, error) {
 	var sb strings.Builder
 	params := make([]any, 0, 13)
 
@@ -143,7 +143,7 @@ func (e QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, err
 	return result, err
 }
 
-func (e QueryImpl[T]) FilterByNameAndAge(ctx context.Context, name string, age int) QueryInterface[T] {
+func (e _QueryImpl[T]) FilterByNameAndAge(ctx context.Context, name string, age int) _QueryInterface[T] {
 	var sb strings.Builder
 	params := make([]any, 0, 2)
 
@@ -155,7 +155,7 @@ func (e QueryImpl[T]) FilterByNameAndAge(ctx context.Context, name string, age i
 	return e
 }
 
-func (e QueryImpl[T]) FilterWithTime(ctx context.Context, start time.Time, end time.Time) ([]T, error) {
+func (e _QueryImpl[T]) FilterWithTime(ctx context.Context, start time.Time, end time.Time) ([]T, error) {
 	var sb strings.Builder
 	params := make([]any, 0, 3)
 

@@ -21,12 +21,12 @@ func New() *cobra.Command {
 
 			err := g.Process(input, output)
 			if err != nil {
-				return fmt.Errorf("Error processing %s: %v", input, err)
+				return fmt.Errorf("error processing %s: %v", input, err)
 			}
 
 			err = g.Gen()
 			if err != nil {
-				return fmt.Errorf("Error render template got error: %v", err)
+				return fmt.Errorf("error render template got error: %v", err)
 			}
 
 			return nil

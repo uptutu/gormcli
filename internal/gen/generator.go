@@ -75,8 +75,9 @@ func (g *Generator) Gen() error {
 			panic(fmt.Sprintf("failed to render template %v, got error %v", file.inputPath, err))
 		}
 
-		result, err := imports.Process(outputFile, nil, nil)
-		os.WriteFile(outputFile, result, 0o640)
+		if result, err := imports.Process(outputFile, nil, nil); err == nil {
+			os.WriteFile(outputFile, result, 0o640)
+		}
 	}
 	return nil
 }
@@ -114,9 +115,10 @@ type (
 		Path string
 	}
 	Interface struct {
-		Name    string
-		Doc     string
-		Methods []*Method
+		Name      string
+		IfaceName string
+		Doc       string
+		Methods   []*Method
 	}
 	Method struct {
 		Name      string
@@ -165,7 +167,7 @@ func (m Method) ResultString() string {
 
 		return strings.Join(rets, ", ")
 	}
-	return fmt.Sprintf("%sInterface[T]", m.Interface.Name)
+	return fmt.Sprintf("%sInterface[T]", m.Interface.IfaceName)
 }
 
 func (m Method) Body() string {
@@ -237,7 +239,7 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 			// pointer type: "*" + underlying type
 			return "*" + parseExprType(t.X)
 		default:
-			return fmt.Sprintf("unknown")
+			return "unknown"
 		}
 	}
 
@@ -277,8 +279,9 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 	case *ast.TypeSpec:
 		if data, ok := n.Type.(*ast.InterfaceType); ok {
 			r := Interface{
-				Name: n.Name.Name,
-				Doc:  n.Doc.Text(),
+				Name:      n.Name.Name,
+				IfaceName: "_" + n.Name.Name,
+				Doc:       n.Doc.Text(),
 			}
 
 			methods := data.Methods.List

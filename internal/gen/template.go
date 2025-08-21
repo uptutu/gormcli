@@ -13,8 +13,8 @@ import (
 )
 
 {{range .Interfaces}}
-{{$IfaceName := .Name}}
-func {{$IfaceName}}[T any](db *gorm.DB, opts ...clause.Expression) {{$IfaceName}}Interface[T] {
+{{$IfaceName := .IfaceName}}
+func {{.Name}}[T any](db *gorm.DB, opts ...clause.Expression) {{$IfaceName}}Interface[T] {
 	return {{$IfaceName}}Impl[T]{
 		Interface: gorm.G[T](db, opts...),
 	}
