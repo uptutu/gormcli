@@ -12,6 +12,7 @@ import (
 	"strings"
 	"text/template"
 
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
 )
 
@@ -109,6 +110,7 @@ type (
 		outputPath string
 		Imports    []Import
 		Interfaces []Interface
+		Structs    []Struct
 	}
 	Import struct {
 		Name string
@@ -129,6 +131,16 @@ type (
 		Interface Interface
 	}
 	Param struct {
+		Name string
+		Type string
+	}
+	Struct struct {
+		Name   string
+		Doc    string
+		Fields []Field
+	}
+
+	Field struct {
 		Name string
 		Type string
 	}
@@ -278,75 +290,165 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 		})
 	case *ast.TypeSpec:
 		if data, ok := n.Type.(*ast.InterfaceType); ok {
-			r := Interface{
-				Name:      n.Name.Name,
-				IfaceName: "_" + n.Name.Name,
-				Doc:       n.Doc.Text(),
-			}
-
-			methods := data.Methods.List
-			for _, m := range methods {
-				for _, name := range m.Names {
-					method := &Method{
-						Name:      name.Name,
-						Doc:       m.Doc.Text(),
-						SQL:       extractSQL(m.Doc.Text(), name.Name),
-						Interface: r,
-					}
-					r.Methods = append(r.Methods, method)
-
-					method.Params = method.parseParams(m.Type.(*ast.FuncType).Params)
-					method.Result = method.parseParams(m.Type.(*ast.FuncType).Results)
-
-					if len(method.Result) == 0 {
-						if method.SQL.Where == "" && method.SQL.Select == "" || method.SQL.Raw != "" {
-							panic(fmt.Sprintf("Method %s.%s: finish method must return at least one value (last return value must be error)", n.Name.Name, method.Name))
-						}
-					} else if len(method.Result) > 2 {
-						panic(fmt.Sprintf("Method %s.%s: maximum number of return values allowed is 2 (first as data, second as error)", n.Name.Name, method.Name))
-					} else if strings.ToLower(method.Result[len(method.Result)-1].Type) != "error" {
-						if len(method.Result) == 1 {
-							panic(fmt.Sprintf("Method %s.%s: when only one return value is defined, its type must be error", n.Name.Name, method.Name))
-						}
-						panic(fmt.Sprintf("Method %s.%s: when two return values are defined, the second must be error", n.Name.Name, method.Name))
-					}
-				}
-			}
-
-			p.Interfaces = append(p.Interfaces, r)
+			p.Interfaces = append(p.Interfaces, processInterfaceType(n, data))
+		} else if data, ok := n.Type.(*ast.StructType); ok {
+			p.Structs = append(p.Structs, p.processStructType(n, data, ""))
 		}
 	}
 	return p
 }
 
-type ExtractedSQL struct {
-	Raw    string
-	Where  string
-	Select string
+func processInterfaceType(n *ast.TypeSpec, data *ast.InterfaceType) Interface {
+	r := Interface{
+		Name:      n.Name.Name,
+		IfaceName: "_" + n.Name.Name,
+		Doc:       n.Doc.Text(),
+	}
+
+	methods := data.Methods.List
+	for _, m := range methods {
+		for _, name := range m.Names {
+			method := &Method{
+				Name:      name.Name,
+				Doc:       m.Doc.Text(),
+				SQL:       extractSQL(m.Doc.Text(), name.Name),
+				Interface: r,
+			}
+			r.Methods = append(r.Methods, method)
+
+			method.Params = method.parseParams(m.Type.(*ast.FuncType).Params)
+			method.Result = method.parseParams(m.Type.(*ast.FuncType).Results)
+
+			if len(method.Result) == 0 {
+				if method.SQL.Where == "" && method.SQL.Select == "" || method.SQL.Raw != "" {
+					panic(fmt.Sprintf("Method %s.%s: finish method must return at least one value (last return value must be error)", n.Name.Name, method.Name))
+				}
+			} else if len(method.Result) > 2 {
+				panic(fmt.Sprintf("Method %s.%s: maximum number of return values allowed is 2 (first as data, second as error)", n.Name.Name, method.Name))
+			} else if strings.ToLower(method.Result[len(method.Result)-1].Type) != "error" {
+				if len(method.Result) == 1 {
+					panic(fmt.Sprintf("Method %s.%s: when only one return value is defined, its type must be error", n.Name.Name, method.Name))
+				}
+				panic(fmt.Sprintf("Method %s.%s: when two return values are defined, the second must be error", n.Name.Name, method.Name))
+			}
+		}
+	}
+	return r
 }
 
-func extractSQL(comment string, methodName string) ExtractedSQL {
-	comment = strings.TrimSpace(comment)
+func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, pkgName string) Struct {
+	s := Struct{
+		Name: typeSpec.Name.Name,
+	}
 
-	if index := strings.Index(comment, "\n\n"); index != -1 {
-		if strings.Contains(comment[index+2:], methodName) {
-			comment = comment[:index]
-		} else {
-			comment = comment[index+2:]
+	for _, field := range data.Fields.List {
+		fieldType := "unknown"
+
+		switch t := field.Type.(type) {
+		case *ast.Ident:
+			fieldType = t.Name
+			fmt.Println("+++ " + t.Name)
+			fmt.Println(t.Obj)
+
+			if t.Obj != nil {
+				fieldType = pkgName + "." + fieldType
+				if ts, ok := t.Obj.Decl.(*ast.TypeSpec); ok {
+					if st, ok := ts.Type.(*ast.StructType); ok {
+						fieldType = pkgName + "." + fieldType
+
+						if len(field.Names) == 0 {
+							sub := p.processStructType(ts, st, pkgName)
+							s.Fields = append(s.Fields, sub.Fields...)
+							continue
+						}
+					}
+				}
+			}
+		case *ast.SelectorExpr:
+
+			pkgAlias := t.X.(*ast.Ident).Name
+			typeName := t.Sel.Name
+			fieldType = pkgAlias + "." + typeName
+			fmt.Println("StarExpr:", fieldType)
+
+			if len(field.Names) == 0 {
+				realPkg := pkgAlias
+				for _, i := range p.Imports {
+					if i.Name == pkgAlias {
+						realPkg = i.Path
+					}
+				}
+
+				if st, err := loadStructFromPackage(realPkg, typeName); err == nil && st != nil {
+					sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: typeName}}, st, pkgAlias)
+					s.Fields = append(s.Fields, sub.Fields...)
+					continue
+				}
+			}
+		case *ast.StarExpr:
+			if ident, ok := t.X.(*ast.Ident); ok {
+				fieldType = "*" + ident.Name
+			}
+		case *ast.StructType:
+			// 匿名内嵌 struct
+			if len(field.Names) == 0 {
+				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: "AnonymousStruct"}}, t, pkgName)
+				s.Fields = append(s.Fields, sub.Fields...)
+				continue
+			} else {
+				fieldType = "struct"
+			}
+		}
+
+		// 字段名
+		fieldNames := []string{}
+		for _, name := range field.Names {
+			fieldNames = append(fieldNames, name.Name)
+		}
+		fmt.Println(fieldNames)
+		fmt.Println(fieldType)
+
+		if len(fieldNames) == 0 {
+			fieldNames = append(fieldNames, "") // 匿名嵌入
+		}
+
+		for _, fn := range fieldNames {
+			s.Fields = append(s.Fields, Field{
+				Name: fn,
+				Type: fieldType,
+			})
 		}
 	}
 
-	sql := strings.TrimPrefix(comment, methodName)
-	if strings.HasPrefix(sql, "where(") && strings.HasSuffix(sql, ")") {
-		content := strings.TrimSuffix(strings.TrimPrefix(sql, "where("), ")")
-		content = strings.Trim(content, "\"")
-		content = strings.TrimSpace(content)
-		return ExtractedSQL{Where: content}
-	} else if strings.HasPrefix(sql, "select(") && strings.HasSuffix(sql, ")") {
-		content := strings.TrimSuffix(strings.TrimPrefix(sql, "select("), ")")
-		content = strings.Trim(content, "\"")
-		content = strings.TrimSpace(content)
-		return ExtractedSQL{Select: content}
+	return s
+}
+
+func loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
+	cfg := &packages.Config{
+		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedImports,
 	}
-	return ExtractedSQL{Raw: sql}
+	pkgs, err := packages.Load(cfg, pkgPath)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pkg := range pkgs {
+		for _, syntax := range pkg.Syntax {
+			for _, decl := range syntax.Decls {
+				gen, ok := decl.(*ast.GenDecl)
+				if !ok {
+					continue
+				}
+				for _, spec := range gen.Specs {
+					ts, ok := spec.(*ast.TypeSpec)
+					if ok && ts.Name.Name == typeName {
+						if st, ok := ts.Type.(*ast.StructType); ok {
+							return st, nil
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil, nil
 }
