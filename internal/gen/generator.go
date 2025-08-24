@@ -460,36 +460,6 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 	return false
 }
 
-// parseGormTag extracts the column name from gorm tag
-func parseGormTag(tag string) string {
-	if tag == "" {
-		return ""
-	}
-
-	// Remove backticks
-	tag = strings.Trim(tag, "`")
-
-	// Find gorm tag
-	parts := strings.Split(tag, " ")
-	for _, part := range parts {
-		if strings.HasPrefix(part, "gorm:") {
-			// Extract gorm tag value
-			gormTag := strings.TrimPrefix(part, "gorm:")
-			gormTag = strings.Trim(gormTag, `"`)
-
-			// Parse gorm tag options
-			options := strings.Split(gormTag, ";")
-			for _, option := range options {
-				if strings.HasPrefix(option, "column:") {
-					return strings.TrimPrefix(option, "column:")
-				}
-			}
-		}
-	}
-
-	return ""
-}
-
 // generateDBName generates database column name using GORM's NamingStrategy
 func generateDBName(fieldName, gormTag string) string {
 	tagSettings := schema.ParseTagSetting(gormTag, ";")
