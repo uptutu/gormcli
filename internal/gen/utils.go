@@ -1,6 +1,10 @@
 package gen
 
-import "strings"
+import (
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
 
 type ExtractedSQL struct {
 	Raw    string
@@ -32,4 +36,11 @@ func extractSQL(comment string, methodName string) ExtractedSQL {
 		return ExtractedSQL{Select: content}
 	}
 	return ExtractedSQL{Raw: sql}
+}
+
+func findGoModDir(filename string) string {
+	cmd := exec.Command("go", "env", "GOMOD")
+	cmd.Dir = filepath.Dir(filename)
+	out, _ := cmd.Output()
+	return filepath.Dir(string(out))
 }

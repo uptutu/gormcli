@@ -92,9 +92,10 @@ func TestProcessStructType(t *testing.T) {
 			{Name: "ID", Type: "uint"},
 			{Name: "CreatedAt", Type: "time.Time"},
 			{Name: "UpdatedAt", Type: "time.Time"},
-			{Name: "DeletedAt", Type: "*time.Time"},
+			{Name: "DeletedAt", Type: "gorm.DeletedAt"},
 			{Name: "Name", Type: "string"},
 			{Name: "Age", Type: "int"},
+			{Name: "Role", Type: "string"},
 		},
 	}
 

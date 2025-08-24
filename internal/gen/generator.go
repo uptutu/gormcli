@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
@@ -342,79 +343,21 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 	}
 
 	for _, field := range data.Fields.List {
-		fieldType := "unknown"
-
-		switch t := field.Type.(type) {
-		case *ast.Ident:
-			fieldType = t.Name
-			fmt.Println("+++ " + t.Name)
-			fmt.Println(t.Obj)
-
-			if t.Obj != nil {
-				fieldType = pkgName + "." + fieldType
-				if ts, ok := t.Obj.Decl.(*ast.TypeSpec); ok {
-					if st, ok := ts.Type.(*ast.StructType); ok {
-						fieldType = pkgName + "." + fieldType
-
-						if len(field.Names) == 0 {
-							sub := p.processStructType(ts, st, pkgName)
-							s.Fields = append(s.Fields, sub.Fields...)
-							continue
-						}
-					}
-				}
-			}
-		case *ast.SelectorExpr:
-
-			pkgAlias := t.X.(*ast.Ident).Name
-			typeName := t.Sel.Name
-			fieldType = pkgAlias + "." + typeName
-			fmt.Println("StarExpr:", fieldType)
-
-			if len(field.Names) == 0 {
-				realPkg := pkgAlias
-				for _, i := range p.Imports {
-					if i.Name == pkgAlias {
-						realPkg = i.Path
-					}
-				}
-
-				if st, err := loadStructFromPackage(realPkg, typeName); err == nil && st != nil {
-					sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: typeName}}, st, pkgAlias)
-					s.Fields = append(s.Fields, sub.Fields...)
-					continue
-				}
-			}
-		case *ast.StarExpr:
-			if ident, ok := t.X.(*ast.Ident); ok {
-				fieldType = "*" + ident.Name
-			}
-		case *ast.StructType:
-			// 匿名内嵌 struct
-			if len(field.Names) == 0 {
-				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: "AnonymousStruct"}}, t, pkgName)
-				s.Fields = append(s.Fields, sub.Fields...)
+		// Handle anonymous embedding first
+		if len(field.Names) == 0 {
+			if p.handleAnonymousEmbedding(field, pkgName, &s) {
 				continue
-			} else {
-				fieldType = "struct"
 			}
 		}
 
-		// 字段名
-		fieldNames := []string{}
-		for _, name := range field.Names {
-			fieldNames = append(fieldNames, name.Name)
-		}
-		fmt.Println(fieldNames)
-		fmt.Println(fieldType)
+		// Parse field type and names
+		fieldType := p.parseFieldType(field.Type, pkgName)
+		fieldNames := p.getFieldNames(field)
 
-		if len(fieldNames) == 0 {
-			fieldNames = append(fieldNames, "") // 匿名嵌入
-		}
-
-		for _, fn := range fieldNames {
+		// Add fields to struct
+		for _, name := range fieldNames {
 			s.Fields = append(s.Fields, Field{
-				Name: fn,
+				Name: name,
 				Type: fieldType,
 			})
 		}
@@ -423,13 +366,104 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 	return s
 }
 
-func loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
+// parseFieldType extracts the type string from an AST field type expression
+func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		// For basic Go types, don't add package prefix
+		if len(t.Name) > 0 && unicode.IsLower(rune(t.Name[0])) {
+			return t.Name
+		}
+		if pkgName != "" {
+			return pkgName + "." + t.Name
+		}
+		return t.Name
+	case *ast.SelectorExpr:
+		if pkgIdent, ok := t.X.(*ast.Ident); ok {
+			return pkgIdent.Name + "." + t.Sel.Name
+		}
+	case *ast.StarExpr:
+		// Recursively handle pointer types
+		innerType := p.parseFieldType(t.X, pkgName)
+		return "*" + innerType
+	case *ast.StructType:
+		return "struct"
+	}
+	return "unknown"
+}
+
+// getFieldNames extracts field names from an AST field, handling anonymous fields
+func (p *File) getFieldNames(field *ast.Field) []string {
+	if len(field.Names) == 0 {
+		return []string{""} // Anonymous field
+	}
+
+	fieldNames := make([]string, 0, len(field.Names))
+	for _, name := range field.Names {
+		fieldNames = append(fieldNames, name.Name)
+	}
+	return fieldNames
+}
+
+// handleAnonymousEmbedding processes anonymous embedded fields and returns true if handled
+func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Struct) bool {
+	switch t := field.Type.(type) {
+	case *ast.Ident:
+		// Local type embedding
+		if t.Obj != nil {
+			if ts, ok := t.Obj.Decl.(*ast.TypeSpec); ok {
+				if st, ok := ts.Type.(*ast.StructType); ok {
+					sub := p.processStructType(ts, st, pkgName)
+					s.Fields = append(s.Fields, sub.Fields...)
+					return true
+				}
+			}
+		}
+	case *ast.SelectorExpr:
+		// External package type embedding
+		if pkgIdent, ok := t.X.(*ast.Ident); ok {
+			pkgAlias := pkgIdent.Name
+			typeName := t.Sel.Name
+
+			// Find the real package path
+			realPkg := pkgAlias
+			for _, i := range p.Imports {
+				if i.Name == pkgAlias {
+					realPkg = strings.Trim(i.Path, `"`)
+				}
+			}
+
+			// Try to load the struct from the package
+			if st, err := p.loadStructFromPackage(realPkg, typeName); err == nil && st != nil {
+				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: typeName}}, st, pkgAlias)
+				s.Fields = append(s.Fields, sub.Fields...)
+				return true
+			}
+		}
+	case *ast.StructType:
+		// Anonymous inline struct embedding
+		sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: "AnonymousStruct"}}, t, pkgName)
+		s.Fields = append(s.Fields, sub.Fields...)
+		return true
+	}
+
+	return false
+}
+
+func (p *File) loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
+	modPath := findGoModDir(p.inputPath)
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedImports,
+		Dir:  modPath,
 	}
+
 	pkgs, err := packages.Load(cfg, pkgPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load package %q from %v: %w", pkgPath, modPath, err)
+	}
+
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("no packages found for path %q from %v", pkgPath, modPath)
 	}
 
 	for _, pkg := range pkgs {
@@ -450,5 +484,6 @@ func loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
 			}
 		}
 	}
-	return nil, nil
+
+	return nil, fmt.Errorf("struct %s not found in package %s", typeName, pkgPath)
 }
