@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
+	"gorm.io/gorm/schema"
 )
 
 type Generator struct {
@@ -142,8 +143,9 @@ type (
 	}
 
 	Field struct {
-		Name string
-		Type string
+		Name   string
+		DBName string
+		Type   string
 	}
 )
 
@@ -354,11 +356,19 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 		fieldType := p.parseFieldType(field.Type, pkgName)
 		fieldNames := p.getFieldNames(field)
 
+		// Get field tag for DBName generation
+		var fieldTag string
+		if field.Tag != nil {
+			fieldTag = field.Tag.Value
+		}
+
 		// Add fields to struct
 		for _, name := range fieldNames {
+			dbName := generateDBName(name, fieldTag)
 			s.Fields = append(s.Fields, Field{
-				Name: name,
-				Type: fieldType,
+				Name:   name,
+				DBName: dbName,
+				Type:   fieldType,
 			})
 		}
 	}
@@ -448,6 +458,48 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 	}
 
 	return false
+}
+
+// parseGormTag extracts the column name from gorm tag
+func parseGormTag(tag string) string {
+	if tag == "" {
+		return ""
+	}
+
+	// Remove backticks
+	tag = strings.Trim(tag, "`")
+
+	// Find gorm tag
+	parts := strings.Split(tag, " ")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "gorm:") {
+			// Extract gorm tag value
+			gormTag := strings.TrimPrefix(part, "gorm:")
+			gormTag = strings.Trim(gormTag, `"`)
+
+			// Parse gorm tag options
+			options := strings.Split(gormTag, ";")
+			for _, option := range options {
+				if strings.HasPrefix(option, "column:") {
+					return strings.TrimPrefix(option, "column:")
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// generateDBName generates database column name using GORM's NamingStrategy
+func generateDBName(fieldName, gormTag string) string {
+	tagSettings := schema.ParseTagSetting(gormTag, ";")
+	if tagSettings["COLUMN"] != "" {
+		return tagSettings["COLUMN"]
+	}
+
+	// Use GORM's NamingStrategy with IdentifierMaxLength: 64
+	ns := schema.NamingStrategy{IdentifierMaxLength: 64}
+	return ns.ColumnName("", fieldName)
 }
 
 func (p *File) loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
