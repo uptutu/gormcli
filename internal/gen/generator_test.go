@@ -89,13 +89,13 @@ func TestProcessStructType(t *testing.T) {
 	expected := Struct{
 		Name: "User",
 		Fields: []Field{
-			{Name: "ID", DBName: "id", Type: "uint"},
-			{Name: "CreatedAt", DBName: "created_at", Type: "time.Time"},
-			{Name: "UpdatedAt", DBName: "updated_at", Type: "time.Time"},
-			{Name: "DeletedAt", DBName: "deleted_at", Type: "gorm.DeletedAt"},
-			{Name: "Name", DBName: "name", Type: "string"},
-			{Name: "Age", DBName: "age", Type: "int"},
-			{Name: "Role", DBName: "role", Type: "string"},
+			{Name: "ID", DBName: "id", GoType: "uint"},
+			{Name: "CreatedAt", DBName: "created_at", GoType: "time.Time"},
+			{Name: "UpdatedAt", DBName: "updated_at", GoType: "time.Time"},
+			{Name: "DeletedAt", DBName: "deleted_at", GoType: "gorm.DeletedAt"},
+			{Name: "Name", DBName: "name", GoType: "string"},
+			{Name: "Age", DBName: "age", GoType: "int"},
+			{Name: "Role", DBName: "role", GoType: "string"},
 		},
 	}
 

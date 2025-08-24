@@ -141,11 +141,10 @@ type (
 		Doc    string
 		Fields []Field
 	}
-
 	Field struct {
 		Name   string
 		DBName string
-		Type   string
+		GoType string
 	}
 )
 
@@ -278,6 +277,43 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 	return params
 }
 
+// mapGoTypeToFieldType maps Go basic types to field.* types
+func mapGoTypeToFieldType(goType string) string {
+	typeMap := map[string]string{
+		"string":    "field.String",
+		"bool":      "field.Bool",
+		"[]byte":    "field.Bytes",
+		"time.Time": "field.Time",
+		"float32":   "field.Float[float32]",
+		"float64":   "field.Float[float64]",
+	}
+
+	if mapped, ok := typeMap[goType]; ok {
+		return mapped
+	}
+
+	if strings.Contains(goType, "int") {
+		return fmt.Sprintf("field.Number[%s]", goType)
+	}
+
+	// Handle pointers to basic types
+	if baseType, ok := strings.CutPrefix(goType, "*"); ok {
+		if mapped := mapGoTypeToFieldType(baseType); mapped != baseType {
+			return mapped
+		}
+	}
+
+	return fmt.Sprintf("field.Field[%s]", goType)
+}
+
+func (f Field) Type() string {
+	return mapGoTypeToFieldType(f.GoType)
+}
+
+func (f Field) Value() string {
+	return f.Type() + fmt.Sprintf("(%q)", f.DBName)
+}
+
 func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 	switch n := n.(type) {
 	case *ast.ImportSpec:
@@ -368,7 +404,7 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 			s.Fields = append(s.Fields, Field{
 				Name:   name,
 				DBName: dbName,
-				Type:   fieldType,
+				GoType: fieldType,
 			})
 		}
 	}
@@ -396,6 +432,10 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
 		// Recursively handle pointer types
 		innerType := p.parseFieldType(t.X, pkgName)
 		return "*" + innerType
+	case *ast.ArrayType:
+		// Handle slice types like []byte
+		elementType := p.parseFieldType(t.Elt, pkgName)
+		return "[]" + elementType
 	case *ast.StructType:
 		return "struct"
 	}

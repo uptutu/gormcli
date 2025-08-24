@@ -37,4 +37,16 @@ func (e {{$IfaceName}}Impl[T]) {{.Name}}({{.ParamsString}}) ({{.ResultString}}) 
 }
 {{end}}
 {{end}}
+
+{{range .Structs}}
+var {{.Name}} = struct {
+	{{range .Fields -}}
+	{{.Name}} {{.Type}}
+	{{end}}
+}{
+	{{range .Fields -}}
+	{{.Name}}: {{.Value}},
+	{{end -}}
+}
+{{end}}
 `
