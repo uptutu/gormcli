@@ -20,27 +20,38 @@ go install gorm.io/cmd/gorm@latest
 
 ## ⚡ Quick Start
 
-1. **Generate code from interfaces:**
+### 1. Generate code from interfaces
 
 ```bash
 gorm gen -i ./query.go -o ./generated
 ```
 
-2. **Use generated type-safe queries:**
+### 2. Run type-safe queries
 
 ```go
-// Template-based query
-user, err := generated.UserQuery[User](db).GetByID(ctx, 1)
+import "your_project/generated"
 
-// Field-based query
-db.Where(generated.User.ID.Eq(1)).Find(&users)
+func Example(db *gorm.DB, ctx context.Context) {
+    // Template-based query (from interface)
+    user, err := generated.Query[User](db).GetByID(ctx, 123)
+
+    // Field-based query (using generated helpers)
+    users, err := gorm.G[User](db).
+        Where(generated.User.Age.Gt(18)).
+        Find(ctx)
+
+    fmt.Println(user, users)
+}
 ```
+
+---
 
 ## 🔎 API Overview
 
 ### Template-based Query Generation
 
-Define SQL templates in Go interfaces. GORM CMD generates strongly typed implementations with parameter binding and compile-time validation.
+Define SQL templates in Go interfaces.
+GORM CMD generates strongly typed implementations with parameter binding and compile-time validation.
 
 ```go
 type Query[T any] interface {
@@ -67,32 +78,46 @@ type Query[T any] interface {
 }
 ```
 
-Usage:
+#### Usage
 
 ```go
 import "your_project/generated"
 
-user, err := generated.Query[User](db).GetByID(ctx, 123)
-users, err := generated.Query[User](db).FilterByNameAndAge("jinzhu", 25).Find(ctx)
-users, err := generated.Query[User](db).SearchUsers(ctx, User{Name: "jinzhu", Age: 25})
-err := generated.Query[User](db).UpdateUser(ctx, updatedUser, 123)
+func ExampleQuery(db *gorm.DB, ctx context.Context) {
+    // Get a single user by ID
+    user, err := generated.Query[User](db).GetByID(ctx, 123)
+
+    // Filter users by name and age
+    users, err := generated.Query[User](db).
+        FilterByNameAndAge("jinzhu", 25).
+        Find(ctx)
+
+    // Conditional search using template logic
+    users, err := generated.Query[User](db).
+        SearchUsers(ctx, User{Name: "jinzhu", Age: 25})
+
+    // Update user with dynamic SET clause
+    err := generated.Query[User](db).
+        UpdateUser(ctx, updatedUser, 123)
+}
 ```
 
 ---
 
 ### Field Helper Generation
 
-Generate strongly typed field helpers for struct fields. These enable expressive, compile-time validated queries.
+Generate strongly typed field helpers for struct fields.
+These enable expressive, compile-time validated queries.
 
 #### Example Model
 
 ```go
 type User struct {
-    ID       uint
-    Name     string
-    Email    string
-    Age      int
-    Status   string
+    ID        uint
+    Name      string
+    Email     string
+    Age       int
+    Status    string
     CreatedAt time.Time
 }
 ```
@@ -119,14 +144,17 @@ generated.User.Age.Between(18, 65)   // age BETWEEN 18 AND 65
 #### Usage
 
 ```go
+// Simple filter
 gorm.G[User](db).
     Where(generated.User.Status.Eq("active")).
     Find(ctx)
 
+// Multiple conditions
 gorm.G[User](db).
     Where(generated.User.Age.Gt(18), generated.User.Status.Eq("active")).
     Find(&users)
 
+// Update using helpers
 gorm.G[User](db).
     Where(generated.User.Status.Eq("pending")).
     Update("status", "active")
