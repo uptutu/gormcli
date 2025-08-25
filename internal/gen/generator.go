@@ -78,6 +78,7 @@ func (g *Generator) Gen() error {
 			panic(fmt.Sprintf("failed to render template %v, got error %v", file.inputPath, err))
 		}
 
+		if result, err := imports.Process(outputFile, nil, nil); err == nil {
 			if err := os.WriteFile(outputFile, result, 0o640); err != nil {
 				panic(fmt.Sprintf("failed to write file %v, got error %v", outputFile, err))
 			}
