@@ -5,9 +5,9 @@ package output
 import (
 	"context"
 	"strings"
-	time "time"
+	"time"
 
-	models "gorm.io/cmd/gorm/examples/models"
+	"gorm.io/cmd/gorm/examples/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
