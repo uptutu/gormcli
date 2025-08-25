@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	{{range .Imports -}}
-		{{.Name}} {{.Path}}
+		{{.ImportPath}}
 	{{end -}}
 )
 

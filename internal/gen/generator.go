@@ -150,6 +150,13 @@ type (
 	}
 )
 
+func (p Import) ImportPath() string {
+	if path.Base(p.Path) == p.Name {
+		return fmt.Sprintf("%q", p.Path)
+	}
+	return fmt.Sprintf("%s %q", p.Name, p.Path)
+}
+
 func (p Param) GoFullType() string {
 	return p.Type
 }
@@ -319,15 +326,15 @@ func (f Field) Value() string {
 func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 	switch n := n.(type) {
 	case *ast.ImportSpec:
-		importName, _ := strconv.Unquote(n.Path.Value)
-		importName = path.Base(importName)
+		importPath, _ := strconv.Unquote(n.Path.Value)
+		importName := path.Base(importPath)
 		if n.Name != nil {
 			importName = n.Name.Name
 		}
 
 		p.Imports = append(p.Imports, Import{
 			Name: importName,
-			Path: n.Path.Value,
+			Path: importPath,
 		})
 	case *ast.TypeSpec:
 		if data, ok := n.Type.(*ast.InterfaceType); ok {
