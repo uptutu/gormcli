@@ -1,10 +1,12 @@
 package gen
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -59,5 +61,52 @@ func TestGeneratorWithQueryInterface(t *testing.T) {
 	if strings.Replace(goldenStr, "package output", "", 1) != strings.Replace(generatedStr, "package examples", "", 1) {
 		t.Errorf("generated file differs from golden file\nGOLDEN: %s\nGENERATED: %s\n %s",
 			goldenPath, generatedFile, generatedStr)
+	}
+}
+
+func TestProcessStructType(t *testing.T) {
+	fileset := token.NewFileSet()
+	file, err := parser.ParseFile(fileset, "../../examples/models/user.go", nil, parser.AllErrors)
+	if err != nil {
+		t.Fatalf("failed to parse file: %v", err)
+	}
+
+	var structType *ast.StructType
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		typeSpec, ok := n.(*ast.TypeSpec)
+		if ok && typeSpec.Name.Name == "User" {
+			structType = typeSpec.Type.(*ast.StructType)
+			return false
+		}
+		return true
+	})
+
+	if structType == nil {
+		t.Fatalf("failed to find User struct")
+	}
+
+	expected := Struct{
+		Name: "User",
+		Fields: []Field{
+			{Name: "ID", DBName: "id", GoType: "uint"},
+			{Name: "CreatedAt", DBName: "created_at", GoType: "time.Time"},
+			{Name: "UpdatedAt", DBName: "updated_at", GoType: "time.Time"},
+			{Name: "DeletedAt", DBName: "deleted_at", GoType: "gorm.DeletedAt"},
+			{Name: "Name", DBName: "name", GoType: "string"},
+			{Name: "Age", DBName: "age", GoType: "int"},
+			{Name: "Role", DBName: "role", GoType: "string"},
+		},
+	}
+
+	p := File{
+		Imports: []Import{
+			{Name: "gorm", Path: "gorm.io/gorm"},
+		},
+	}
+
+	result := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: "User"}}, structType, "")
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected %+v, got %+v", expected, result)
 	}
 }

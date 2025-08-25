@@ -7,14 +7,15 @@ package {{.Package}}
 import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/cmd/gorm/field"
 	{{range .Imports -}}
-		{{.Name}} {{.Path}}
+		{{.ImportPath}}
 	{{end -}}
 )
 
 {{range .Interfaces}}
-{{$IfaceName := .Name}}
-func {{$IfaceName}}[T any](db *gorm.DB, opts ...clause.Expression) {{$IfaceName}}Interface[T] {
+{{$IfaceName := .IfaceName}}
+func {{.Name}}[T any](db *gorm.DB, opts ...clause.Expression) {{$IfaceName}}Interface[T] {
 	return {{$IfaceName}}Impl[T]{
 		Interface: gorm.G[T](db, opts...),
 	}
@@ -36,5 +37,17 @@ func (e {{$IfaceName}}Impl[T]) {{.Name}}({{.ParamsString}}) ({{.ResultString}}) 
 	{{.Body}}
 }
 {{end}}
+{{end}}
+
+{{range .Structs}}
+var {{.Name}} = struct {
+	{{range .Fields -}}
+	{{.Name}} {{.Type}}
+	{{end}}
+}{
+	{{range .Fields -}}
+	{{.Name}}: {{.Value}},
+	{{end -}}
+}
 {{end}}
 `
