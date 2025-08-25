@@ -12,6 +12,31 @@ type Number[T constraints.Integer | constraints.Float] struct {
 	column clause.Column
 }
 
+// WithColumn creates a new Number field with the specified column name.
+// This method allows you to change the column name while keeping other properties.
+//
+// Example:
+//   age := NewNumber[int]("user_age")
+//   userAge := age.WithColumn("age")
+func (n Number[T]) WithColumn(name string) Number[T] {
+	column := n.column
+	column.Name = name
+	return Number[T]{column: column}
+}
+
+// WithTable creates a new Number field with the specified table name.
+// This method is useful when working with joins and you need to qualify the column with a table name.
+//
+// Example:
+//   age := field.Number[int]{column: clause.Column{Name: "age"}}
+//   userAge := age.WithTable("users")
+func (n Number[T]) WithTable(name string) Number[T] {
+	column := n.column
+	column.Table = name
+	return Number[T]{column: column}
+}
+
+
 // Query functions
 
 // Eq creates an equality comparison expression (field = value).

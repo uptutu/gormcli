@@ -7,6 +7,7 @@ package {{.Package}}
 import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/cmd/gorm/field"
 	{{range .Imports -}}
 		{{.ImportPath}}
 	{{end -}}

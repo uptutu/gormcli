@@ -293,15 +293,13 @@ func mapGoTypeToFieldType(goType string) string {
 		"bool":      "field.Bool",
 		"[]byte":    "field.Bytes",
 		"time.Time": "field.Time",
-		"float32":   "field.Float[float32]",
-		"float64":   "field.Float[float64]",
 	}
 
 	if mapped, ok := typeMap[goType]; ok {
 		return mapped
 	}
 
-	if strings.Contains(goType, "int") {
+	if strings.Contains(goType, "int") || strings.Contains(goType, "float") {
 		return fmt.Sprintf("field.Number[%s]", goType)
 	}
 
@@ -320,7 +318,7 @@ func (f Field) Type() string {
 }
 
 func (f Field) Value() string {
-	return f.Type() + fmt.Sprintf("(%q)", f.DBName)
+	return f.Type() + fmt.Sprintf("{}.WithColumn(%q)", f.DBName)
 }
 
 func (p *File) Visit(n ast.Node) (w ast.Visitor) {
