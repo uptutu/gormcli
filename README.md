@@ -1,47 +1,46 @@
 # GORM CMD
 
-GORM CMD is a code generation tool for Go applications that creates type-safe database query interfaces and field accessor methods for GORM. It generates compile-time verified database operations, eliminating runtime query errors.
+**GORM CMD** is a code generation tool for Go that produces **type-safe query interfaces** and **field helper methods** for GORM.
+It eliminates runtime query errors by verifying database operations at **compile time**.
 
-## Features
+## 🚀 Features
 
-- **Type-safe Queries**: Compile-time verification for database operations
-- **SQL Templates**: Generate code from SQL template comments
-- **Field Helpers**: Auto-generated type-safe field accessor methods
-- **GORM Integration**: Works seamlessly with existing GORM APIs
+* **Type-safe Queries** – Compile-time validation of database operations
+* **SQL Templates** – Generate query methods directly from SQL template comments
+* **Field Helpers** – Auto-generated, strongly typed field accessor methods
+* **Seamless GORM Integration** – Works with existing GORM APIs out of the box
 
-## Installation
+## 📦 Installation
 
-Requirements: Go 1.18 or later with generics support.
+Requires Go **1.18+** (with generics).
 
 ```bash
 go install gorm.io/cmd/gorm@latest
 ```
 
-## Quick Start
+## ⚡ Quick Start
 
-1. **Generate code from interface definitions:**
+1. **Generate code from interfaces:**
+
 ```bash
 gorm gen -i ./query.go -o ./generated
 ```
 
 2. **Use generated type-safe queries:**
+
 ```go
-// Template-based queries
+// Template-based query
 user, err := generated.UserQuery[User](db).GetByID(ctx, 1)
 
-// Field-based queries
+// Field-based query
 db.Where(generated.User.ID.Eq(1)).Find(&users)
 ```
 
-## API Reference
+## 🔎 API Overview
 
 ### Template-based Query Generation
 
-Template-based generation converts SQL comments into type-safe Go interface implementations with parameter binding and query optimization.
-
-#### Basic Template Syntax
-
-SQL template comments are embedded as Go interface method comments:
+Define SQL templates in Go interfaces. GORM CMD generates strongly typed implementations with parameter binding and compile-time validation.
 
 ```go
 type Query[T any] interface {
@@ -68,7 +67,7 @@ type Query[T any] interface {
 }
 ```
 
-#### Template Interface Implementation
+Usage:
 
 ```go
 import "your_project/generated"
@@ -79,11 +78,13 @@ users, err := generated.Query[User](db).SearchUsers(ctx, User{Name: "jinzhu", Ag
 err := generated.Query[User](db).UpdateUser(ctx, updatedUser, 123)
 ```
 
-### Struct Field Helper Generation
+---
 
-Field helper generation produces type-safe query builder methods for struct fields, enabling compile-time validation of database operations.
+### Field Helper Generation
 
-#### Model Definition
+Generate strongly typed field helpers for struct fields. These enable expressive, compile-time validated queries.
+
+#### Example Model
 
 ```go
 type User struct {
@@ -92,78 +93,75 @@ type User struct {
     Email    string
     Age      int
     Status   string
-    CreateAt time.Time
+    CreatedAt time.Time
 }
 ```
 
-#### Generated Field Operations
+#### Generated Helpers
 
 ```go
-// Equality operations
-generated.User.ID.Eq(1)             // id = 1
-generated.User.ID.Neq(1)            // id != 1
-generated.User.ID.In(1, 2, 3)       // id IN (1, 2, 3)
+// Equality
+generated.User.ID.Eq(1)          // id = 1
+generated.User.ID.Neq(1)         // id != 1
+generated.User.ID.In(1, 2, 3)    // id IN (1, 2, 3)
 
-// String operations
-generated.User.Name.Eq("jinzhu")      // name = 'jinzhu'
-generated.User.Name.Like("%jinzhu%")  // name LIKE '%jinzhu%'
-generated.User.Name.IsNotNull()     // name IS NOT NULL
+// String
+generated.User.Name.Like("%jinzhu%") // name LIKE '%jinzhu%'
+generated.User.Name.IsNotNull()      // name IS NOT NULL
 
-// Numeric operations
-generated.User.Age.Gt(18)           // age > 18
-generated.User.Age.Gte(18)          // age >= 18
-generated.User.Age.Between(18, 65)  // age BETWEEN 18 AND 65
-//... more checkout https://pkg.go.dev/gorm.io/cmd/gorm/field
+// Numeric
+generated.User.Age.Gt(18)            // age > 18
+generated.User.Age.Between(18, 65)   // age BETWEEN 18 AND 65
+
+// ... more, see https://pkg.go.dev/gorm.io/cmd/gorm/field
 ```
 
-#### Field Helper Usage
+#### Usage
 
 ```go
-import "your_project/generated"
+gorm.G[User](db).
+    Where(generated.User.Status.Eq("active")).
+    Find(ctx)
 
-// Basic queries
-gorm.G[User](db).Where(generated.User.Status.Eq("active")).Find(ctx)
-gorm.G[User](db).Where(generated.User.Age.Gte(18)).Find(ctx)
+gorm.G[User](db).
+    Where(generated.User.Age.Gt(18), generated.User.Status.Eq("active")).
+    Find(&users)
 
-// Compound conditions
-gorm.G[User](db).Where(
-    generated.User.Age.Gt(18),
-    generated.User.Status.Eq("active"),
-).Find(&users)
-
-// Data modification
-gorm.G[User](db).Where(generated.User.Status.Eq("pending")).Update("status", "active")
+gorm.G[User](db).
+    Where(generated.User.Status.Eq("pending")).
+    Update("status", "active")
 ```
 
+---
 
-## Template DSL Specification
+## 📝 Template DSL
 
-GORM CMD implements a domain-specific language for SQL template generation with the following directives:
+GORM CMD provides a SQL template DSL:
 
-| Directive | Function | Implementation Example |
-|-----------|----------|----------------------|
-| `@@table` | Current model table name resolution | `SELECT * FROM @@table WHERE id=@id` |
-| `@@column` | Dynamic column name parameter binding | `SELECT * FROM @@table WHERE @@column=@value` |
-| `@param` | Go parameter to SQL parameter binding | `WHERE name=@user.Name` |
-| `{{where}}` | Conditional WHERE clause generation | `{{where}} condition1 AND condition2 {{end}}` |
-| `{{set}}` | Conditional SET clause generation for UPDATE | `{{set}} column1=@value1, column2=@value2 {{end}}` |
-| `{{if}}` | Conditional SQL block generation | `{{if age > 0}} AND age=@age {{end}}` |
-| `{{for}}` | Iterative SQL generation over collections | `{{for _, item := range items}} {{end}}` |
+| Directive   | Purpose                            | Example                                  |
+| ----------- | ---------------------------------- | ---------------------------------------- |
+| `@@table`   | Resolves to the model’s table name | `SELECT * FROM @@table WHERE id=@id`     |
+| `@@column`  | Dynamic column binding             | `@@column=@value`                        |
+| `@param`    | Maps Go params to SQL params       | `WHERE name=@user.Name`                  |
+| `{{where}}` | Conditional WHERE clause           | `{{where}} age > 18 {{end}}`             |
+| `{{set}}`   | Conditional SET clause (UPDATE)    | `{{set}} name=@name {{end}}`             |
+| `{{if}}`    | Conditional SQL fragment           | `{{if age > 0}} AND age=@age {{end}}`    |
+| `{{for}}`   | Iteration over a collection        | `{{for _, t := range tags}} ... {{end}}` |
 
-### Template Implementation Examples
+### Examples
 
 ```sql
--- Parameter binding with type safety
+-- Safe parameter binding
 SELECT * FROM @@table WHERE id=@id AND status=@status
 
--- Conditional WHERE clause generation
+-- Conditional WHERE
 SELECT * FROM @@table
 {{where}}
   {{if name != ""}} name=@name {{end}}
   {{if age > 0}} AND age=@age {{end}}
 {{end}}
 
--- Dynamic UPDATE with conditional field setting
+-- Dynamic UPDATE
 UPDATE @@table
 {{set}}
   {{if user.Name != ""}} name=@user.Name, {{end}}
@@ -171,7 +169,7 @@ UPDATE @@table
 {{end}}
 WHERE id=@id
 
--- Iterative condition generation
+-- Iteration
 SELECT * FROM @@table
 {{where}}
   {{for _, tag := range tags}}
