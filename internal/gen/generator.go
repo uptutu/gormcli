@@ -23,6 +23,7 @@ type Generator struct {
 	Files []*File
 }
 
+// Process processes input files or directories and generates code
 func (g *Generator) Process(input, output string) error {
 	info, err := os.Stat(input)
 	if err != nil {
@@ -46,6 +47,7 @@ func (g *Generator) Process(input, output string) error {
 	return g.processFile(input, output, inputRoot)
 }
 
+// Gen generates code files from processed AST data
 func (g *Generator) Gen() error {
 	tmpl, err := template.New("").Parse(pkgTmpl)
 	if err != nil {
@@ -77,6 +79,7 @@ func (g *Generator) Gen() error {
 	return nil
 }
 
+// processFile processes a single Go file and extracts AST information
 func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 	inputFile, err := filepath.Abs(inputFile)
 	if err != nil {
@@ -106,7 +109,16 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 		return fmt.Errorf("can't parse file %q: %s", inputFile, err)
 	}
 
-	file := &File{Package: filepath.Base(outputDir), inputPath: inputFile, outputPath: outFile}
+	file := &File{Package: f.Name.Name, inputPath: inputFile, outputPath: outFile}
+
+	// Get current package's full import path and add to imports
+	if pkgPath := getCurrentPackagePath(inputFile); pkgPath != "" {
+		file.Imports = append(file.Imports, Import{
+			Name: f.Name.Name,
+			Path: pkgPath,
+		})
+	}
+
 	g.Files = append(g.Files, file)
 
 	ast.Walk(file, f)
@@ -171,6 +183,7 @@ type (
 	}
 )
 
+// ImportPath returns formatted import path string for template generation
 func (p Import) ImportPath() string {
 	if path.Base(p.Path) == p.Name {
 		return fmt.Sprintf("%q", p.Path)
@@ -178,10 +191,12 @@ func (p Import) ImportPath() string {
 	return fmt.Sprintf("%s %q", p.Name, p.Path)
 }
 
+// GoFullType returns the complete Go type string for a parameter
 func (p Param) GoFullType() string {
 	return p.Type
 }
 
+// ParamsString formats method parameters as a string for code generation
 func (m Method) ParamsString() string {
 	var parts []string
 	hasCtx := false
@@ -202,6 +217,7 @@ func (m Method) ParamsString() string {
 	return strings.Join(parts, ", ")
 }
 
+// ResultString formats method return values as a string for code generation
 func (m Method) ResultString() string {
 	if m.SQL.Raw != "" {
 		var rets []string
@@ -214,6 +230,7 @@ func (m Method) ResultString() string {
 	return fmt.Sprintf("%sInterface[T]", m.Interface.IfaceName)
 }
 
+// Body generates the method body code for templates
 func (m Method) Body() string {
 	if m.SQL.Raw != "" {
 		return m.finishMethodBody()
@@ -221,6 +238,7 @@ func (m Method) Body() string {
 	return m.chainMethodBody()
 }
 
+// processSQL processes SQL template strings and returns formatted SQL snippet
 func (m Method) processSQL(sql string) string {
 	sqlSnippet, err := RenderSQLTemplate(sql)
 	if err != nil {
@@ -230,6 +248,7 @@ func (m Method) processSQL(sql string) string {
 	return sqlSnippet
 }
 
+// finishMethodBody generates method body for finishing SQL operations that return data
 func (m Method) finishMethodBody() string {
 	sqlSnippet := m.processSQL(m.SQL.Raw)
 
@@ -244,6 +263,7 @@ err := e.Raw(sb.String(), params...).Scan(ctx, &result)
 return result, err`, sqlSnippet, m.Result[0].GoFullType())
 }
 
+// chainMethodBody generates method body for chaining SQL operations that return interface
 func (m Method) chainMethodBody() string {
 	var callMethod, sql string
 	if m.SQL.Select != "" {
@@ -263,34 +283,14 @@ e.%s(sb.String(), params...)
 return e`, sqlSnippet, callMethod)
 }
 
-func (m Method) parseParams(fields *ast.FieldList) []Param {
+// parseFieldList converts AST field list to parameter slice for method signatures
+func (p *File) parseFieldList(fields *ast.FieldList) []Param {
 	if fields == nil {
 		return nil
 	}
 
-	var parseExprType func(e ast.Expr) string
-	parseExprType = func(expr ast.Expr) string {
-		switch t := expr.(type) {
-		case *ast.Ident:
-			return t.Name
-		case *ast.SelectorExpr:
-			// e.g. models.User
-			return parseExprType(t.X) + "." + t.Sel.Name
-		case *ast.ArrayType:
-			// slice type: "[]" + element type
-			return "[]" + parseExprType(t.Elt)
-		case *ast.StarExpr:
-			// pointer type: "*" + underlying type
-			return "*" + parseExprType(t.X)
-		default:
-			return "unknown"
-		}
-	}
-
 	var params []Param
 	for _, field := range fields.List {
-		typ := parseExprType(field.Type)
-
 		names := field.Names
 		if len(names) == 0 {
 			names = []*ast.Ident{{Name: ""}}
@@ -299,7 +299,7 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 		for _, n := range names {
 			params = append(params, Param{
 				Name: n.Name,
-				Type: typ,
+				Type: p.parseFieldType(field.Type, ""),
 			})
 		}
 	}
@@ -307,14 +307,16 @@ func (m Method) parseParams(fields *ast.FieldList) []Param {
 	return params
 }
 
-// mapGoTypeToFieldType maps Go basic types to field.* types
-func mapGoTypeToFieldType(goType string) string {
-	typeMap := map[string]string{
-		"string":    "field.String",
-		"bool":      "field.Bool",
-		"[]byte":    "field.Bytes",
-		"time.Time": "field.Time",
-	}
+var typeMap = map[string]string{
+	"string":    "field.String",
+	"bool":      "field.Bool",
+	"[]byte":    "field.Bytes",
+	"time.Time": "field.Time",
+}
+
+// Type returns the field type string for template generation
+func (f Field) Type() string {
+	goType := strings.TrimPrefix(f.GoType, "*")
 
 	if mapped, ok := typeMap[goType]; ok {
 		return mapped
@@ -324,24 +326,15 @@ func mapGoTypeToFieldType(goType string) string {
 		return fmt.Sprintf("field.Number[%s]", goType)
 	}
 
-	// Handle pointers to basic types
-	if baseType, ok := strings.CutPrefix(goType, "*"); ok {
-		if mapped := mapGoTypeToFieldType(baseType); mapped != baseType {
-			return mapped
-		}
-	}
-
 	return fmt.Sprintf("field.Field[%s]", goType)
 }
 
-func (f Field) Type() string {
-	return mapGoTypeToFieldType(f.GoType)
-}
-
+// Value returns the field value string with column name for template generation
 func (f Field) Value() string {
 	return f.Type() + fmt.Sprintf("{}.WithColumn(%q)", f.DBName)
 }
 
+// Visit implements ast.Visitor to traverse AST nodes and extract imports, interfaces, and structs
 func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 	switch n := n.(type) {
 	case *ast.ImportSpec:
@@ -357,7 +350,7 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 		})
 	case *ast.TypeSpec:
 		if data, ok := n.Type.(*ast.InterfaceType); ok {
-			p.Interfaces = append(p.Interfaces, processInterfaceType(n, data))
+			p.Interfaces = append(p.Interfaces, p.processInterfaceType(n, data))
 		} else if data, ok := n.Type.(*ast.StructType); ok {
 			p.Structs = append(p.Structs, p.processStructType(n, data, ""))
 		}
@@ -365,7 +358,8 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 	return p
 }
 
-func processInterfaceType(n *ast.TypeSpec, data *ast.InterfaceType) Interface {
+// processInterfaceType processes an interface type AST node and extracts interface metadata and methods
+func (p *File) processInterfaceType(n *ast.TypeSpec, data *ast.InterfaceType) Interface {
 	r := Interface{
 		Name:      n.Name.Name,
 		IfaceName: "_" + n.Name.Name,
@@ -383,8 +377,8 @@ func processInterfaceType(n *ast.TypeSpec, data *ast.InterfaceType) Interface {
 			}
 			r.Methods = append(r.Methods, method)
 
-			method.Params = method.parseParams(m.Type.(*ast.FuncType).Params)
-			method.Result = method.parseParams(m.Type.(*ast.FuncType).Results)
+			method.Params = p.parseFieldList(m.Type.(*ast.FuncType).Params)
+			method.Result = p.parseFieldList(m.Type.(*ast.FuncType).Results)
 
 			if len(method.Result) == 0 {
 				if method.SQL.Where == "" && method.SQL.Select == "" || method.SQL.Raw != "" {
@@ -403,6 +397,7 @@ func processInterfaceType(n *ast.TypeSpec, data *ast.InterfaceType) Interface {
 	return r
 }
 
+// processStructType processes a struct type AST node and extracts struct metadata and fields
 func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, pkgName string) Struct {
 	s := Struct{
 		Name: typeSpec.Name.Name,
@@ -418,7 +413,6 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 
 		// Parse field type and names
 		fieldType := p.parseFieldType(field.Type, pkgName)
-		fieldNames := p.getFieldNames(field)
 
 		// Get field tag for DBName generation
 		var fieldTag string
@@ -427,10 +421,10 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 		}
 
 		// Add fields to struct
-		for _, name := range fieldNames {
-			dbName := generateDBName(name, fieldTag)
+		for _, n := range field.Names {
+			dbName := generateDBName(n.Name, fieldTag)
 			s.Fields = append(s.Fields, Field{
-				Name:   name,
+				Name:   n.Name,
 				DBName: dbName,
 				GoType: fieldType,
 			})
@@ -448,8 +442,28 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
 		if len(t.Name) > 0 && unicode.IsLower(rune(t.Name[0])) {
 			return t.Name
 		}
+
 		if pkgName != "" {
 			return pkgName + "." + t.Name
+		}
+
+		// Check if this is a local type or an external type
+		// If it's a type with uppercase first letter and no package context,
+		// try to find the package it belongs to from imports
+		if len(t.Name) > 0 && unicode.IsUpper(rune(t.Name[0])) {
+			// Check if it's defined locally (has an Obj and is in current file)
+			if t.Obj != nil && p.Package != "" {
+				// Don't add package prefix to generic type parameters
+				// Generic type parameters have Obj.Decl as *ast.Field (from type parameter list)
+				// Regular types have Obj.Decl as *ast.TypeSpec (from type declarations)
+				if _, isField := t.Obj.Decl.(*ast.Field); isField {
+					return t.Name
+				}
+				return p.Package + "." + t.Name
+			}
+
+			// When pkgName is empty, use current package name for external types
+			return t.Name
 		}
 		return t.Name
 	case *ast.SelectorExpr:
@@ -464,23 +478,8 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
 		// Handle slice types like []byte
 		elementType := p.parseFieldType(t.Elt, pkgName)
 		return "[]" + elementType
-	case *ast.StructType:
-		return "struct"
 	}
-	return "unknown"
-}
-
-// getFieldNames extracts field names from an AST field, handling anonymous fields
-func (p *File) getFieldNames(field *ast.Field) []string {
-	if len(field.Names) == 0 {
-		return []string{""} // Anonymous field
-	}
-
-	fieldNames := make([]string, 0, len(field.Names))
-	for _, name := range field.Names {
-		fieldNames = append(fieldNames, name.Name)
-	}
-	return fieldNames
+	return "any"
 }
 
 // handleAnonymousEmbedding processes anonymous embedded fields and returns true if handled
@@ -504,15 +503,15 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 			typeName := t.Sel.Name
 
 			// Find the real package path
-			realPkg := pkgAlias
+			pkgPath := pkgAlias
 			for _, i := range p.Imports {
 				if i.Name == pkgAlias {
-					realPkg = strings.Trim(i.Path, `"`)
+					pkgPath = i.Path
 				}
 			}
 
 			// Try to load the struct from the package
-			if st, err := p.loadStructFromPackage(realPkg, typeName); err == nil && st != nil {
+			if st, err := p.loadStructFromPackage(pkgPath, typeName); err == nil && st != nil {
 				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: typeName}}, st, pkgAlias)
 				s.Fields = append(s.Fields, sub.Fields...)
 				return true
@@ -540,6 +539,7 @@ func generateDBName(fieldName, gormTag string) string {
 	return ns.ColumnName("", fieldName)
 }
 
+// loadStructFromPackage loads a struct type definition from an external package by name
 func (p *File) loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
 	modPath := findGoModDir(p.inputPath)
 	cfg := &packages.Config{
