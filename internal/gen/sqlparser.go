@@ -32,7 +32,7 @@ func (t *TextNode) Emit(indent, target string, withPrefix bool) string {
 	replaced := rePlaceholder.ReplaceAllStringFunc(str, func(ph string) string {
 		switch {
 		case ph == "@@table":
-			params = append(params, "clause.CurrentTable")
+			params = append(params, "clause.Table{Name: clause.CurrentTable}")
 			return "?"
 		case strings.HasPrefix(ph, "@@"):
 			params = append(params, fmt.Sprintf("gorm.Expr(\"?\", %s)", ph[2:]))
