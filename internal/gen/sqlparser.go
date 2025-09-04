@@ -45,7 +45,6 @@ func (t *TextNode) Emit(indent, target string, withPrefix bool) string {
 	})
 
 	replaced = strings.ReplaceAll(replaced, escapedToken, "@")
-	replaced = strings.ReplaceAll(replaced, "\"", "\\\"")
 
 	if withPrefix {
 		replaced = " " + replaced

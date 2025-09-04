@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/cmd/gorm/examples/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/cmd/gorm/examples/models"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
-	// Create a temporary SQLite database for testing
+	// Use in-memory database with shared cache to ensure clean state
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect database: %v", err)
@@ -26,124 +26,93 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func teardownTestDB(t *testing.T, db *gorm.DB) {
-	// Close the database connection
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("failed to get database instance: %v", err)
-	}
-	sqlDB.Close()
-}
-
-// Test all generated methods
-func TestAllGeneratedMethods(t *testing.T) {
+func TestUserQueries(t *testing.T) {
 	db := setupTestDB(t)
-	defer teardownTestDB(t, db)
 
-	// Create test users
 	users := []models.User{
-		{Name: "@name", Age: 25, Role: "admin"},
-		{Name: "testuser", Age: 30, Role: "user"},
-		{Name: "otheruser", Age: 35, Role: "guest"},
+		{Name: "@name", Age: 28, Role: "special"}, // Add user with "@name" to test GetByID
+		{Name: "user1", Age: 30, Role: "user"},
+		{Name: "admin", Age: 25, Role: "admin"},
+		{Name: "guest", Age: 35, Role: "guest"},
 	}
-	for _, user := range users {
-		result := db.Create(&user)
-		if result.Error != nil {
-			t.Fatalf("failed to create test user: %v", result.Error)
+	if err := db.Create(&users).Error; err != nil {
+		t.Fatalf("failed to seed users: %v", err)
+	}
+
+	t.Run("Test GetByID", func(t *testing.T) {
+		query := Query[models.User](db)
+		user, err := query.GetByID(context.Background(), int(users[0].ID)) // Get the "@name" user
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
 		}
-	}
-
-	// Test that we can create a Query instance
-	query := Query[models.User](db)
-
-	// Verify that the query object is created successfully
-	if query == nil {
-		t.Fatalf("Expected query object to be created, got nil")
-	}
-
-	// Test GetByID method (interface creation only, as SQL has issues with SQLite)
-	t.Run("GetByID", func(t *testing.T) {
-		// We can only test that the method exists and can be called
-		_, err := query.GetByID(context.Background(), 1)
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
-	})
-
-	// Test FilterWithColumn method
-	t.Run("FilterWithColumn", func(t *testing.T) {
-		// We can only test that the method exists and can be called
-		_, err := query.FilterWithColumn(context.Background(), "name", "testuser")
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
-	})
-
-	// Test QueryWith method
-	t.Run("QueryWith", func(t *testing.T) {
-		// Test with ID filter
-		_, err := query.QueryWith(context.Background(), models.User{Model: gorm.Model{ID: 1}})
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
-
-		// Test with Name filter
-		_, err = query.QueryWith(context.Background(), models.User{Name: "testuser"})
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
-	})
-
-	// Test UpdateInfo method
-	t.Run("UpdateInfo", func(t *testing.T) {
-		// We can only test that the method exists and can be called
-		err := query.UpdateInfo(context.Background(), models.User{Name: "newuser", Age: 40}, 1)
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
-	})
-
-	// Test Filter method
-	t.Run("Filter", func(t *testing.T) {
-		// We can only test that the method exists and can be called
-		_, err := query.Filter(context.Background(), []models.User{
-			{Name: "testuser", Age: 30, Role: "user"},
-		})
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
-	})
-
-	// Test FilterByNameAndAge method
-	t.Run("FilterByNameAndAge", func(t *testing.T) {
-		// Test that chaining works
-		resultQuery := query.FilterByNameAndAge(context.Background(), "testuser", 30)
-		
-		// Verify that chaining works
-		if resultQuery == nil {
-			t.Errorf("Expected chained query object to be created, got nil")
+		// The generated SQL has a hardcoded "@name" condition, so it should match the user with name "@name"
+		if user.Name != "@name" {
+			t.Errorf("expected user '@name', got: %+v", user)
 		}
 	})
 
-	// Test FilterWithTime method
-	t.Run("FilterWithTime", func(t *testing.T) {
-		// We can only test that the method exists and can be called
-		startTime := time.Now().Add(-24 * time.Hour)
-		endTime := time.Now()
-		
-		_, err := query.FilterWithTime(context.Background(), startTime, endTime)
-		// We expect an error due to SQL placeholder issues, but the method should exist
-		_ = err // Just to acknowledge the error
+	t.Run("Test FilterWithColumn", func(t *testing.T) {
+		query := Query[models.User](db)
+		u, err := query.FilterWithColumn(context.Background(), "role", "special")
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if u.Role != "special" {
+			t.Errorf("expected role 'special', got: %+v", u)
+		}
+	})
+
+	t.Run("Test QueryWith", func(t *testing.T) {
+		query := Query[models.User](db)
+		result, err := query.QueryWith(context.Background(), models.User{Name: "guest"})
+		if err != nil || result.Role != "guest" {
+			t.Errorf("expected one 'guest', got: %+v, error: %v", result, err)
+		}
+	})
+
+	t.Run("Test UpdateInfo", func(t *testing.T) {
+		query := Query[models.User](db)
+		update := models.User{Name: "updatedUser", Age: 40}
+		if err := query.UpdateInfo(context.Background(), update, int(users[1].ID)); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("Test Filter", func(t *testing.T) {
+		query := Query[models.User](db)
+		// The filter method requires Name != "" && Age > 0 to add conditions
+		filters := []models.User{
+			{Name: "admin", Age: 25, Role: "admin"},
+			{Name: "guest", Age: 35, Role: "guest"},
+		}
+		results, err := query.Filter(context.Background(), filters)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 users, got: %d", len(results))
+		}
+	})
+
+	t.Run("Test FilterByNameAndAge", func(t *testing.T) {
+		query := Query[models.User](db)
+		result := query.FilterByNameAndAge(context.Background(), "user1", 30)
+		if result == nil {
+			t.Error("expected a valid query result, got nil")
+		}
+	})
+
+	t.Run("Test FilterWithTime", func(t *testing.T) {
+		query := Query[models.User](db)
+		start := time.Now().Add(-1 * time.Hour)
+		end := time.Now().Add(1 * time.Hour)
+		results, err := query.FilterWithTime(context.Background(), start, end)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if len(results) != len(users) {
+			t.Errorf("expected %d users, got: %d", len(users), len(results))
+		}
 	})
 }
 
-// Test that the generated code compiles and integrates with GORM correctly
-func TestCompilationAndIntegration(t *testing.T) {
-	db := setupTestDB(t)
-	defer teardownTestDB(t, db)
-
-	// Test that we can create a Query instance
-	query := Query[models.User](db)
-
-	// Verify that the query object implements the expected interface
-	var _ _QueryInterface[models.User] = query
-
-	// Test that we can use GORM methods on the query object
-	// This verifies that the embedding of gorm.Interface[T] works correctly
-	// We can't easily test Find because it's a GORM method that requires a proper context
-	// but we can verify the method exists by checking that the interface is satisfied
-}

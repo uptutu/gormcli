@@ -95,6 +95,7 @@ func TestProcessStructType(t *testing.T) {
 			{Name: "Name", DBName: "name", GoType: "string"},
 			{Name: "Age", DBName: "age", GoType: "int"},
 			{Name: "Role", DBName: "role", GoType: "string"},
+			{Name: "IsAdult", DBName: "is_adult", GoType: "bool"},
 		},
 	}
 

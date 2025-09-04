@@ -38,7 +38,7 @@ func (e _QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
 	var sb strings.Builder
 	params := make([]any, 0, 2)
 
-	sb.WriteString("SELECT * FROM ? WHERE id=? AND name = \\\"@name\\\"")
+	sb.WriteString("SELECT * FROM ? WHERE id=? AND name = \"@name\"")
 	params = append(params, clause.Table{Name: clause.CurrentTable}, id)
 
 	var result T
@@ -67,7 +67,7 @@ func (e _QueryImpl[T]) QueryWith(ctx context.Context, user models.User) (T, erro
 		sb.WriteString(" WHERE id=?")
 		params = append(params, user.ID)
 	} else if user.Name != "" {
-		sb.WriteString(" WHERE username=?")
+		sb.WriteString(" WHERE name=?")
 		params = append(params, user.Name)
 	}
 
@@ -85,7 +85,7 @@ func (e _QueryImpl[T]) UpdateInfo(ctx context.Context, user models.User, id int)
 	{
 		var tmp strings.Builder
 		if user.Name != "" {
-			tmp.WriteString(" username=?,")
+			tmp.WriteString(" name=?,")
 			params = append(params, user.Name)
 		}
 		if user.Age > 0 {
@@ -120,7 +120,7 @@ func (e _QueryImpl[T]) Filter(ctx context.Context, users []models.User) ([]T, er
 		var tmp strings.Builder
 		for _, user := range users {
 			if user.Name != "" && user.Age > 0 {
-				tmp.WriteString(" (username = ? AND age=? AND role LIKE concat(\\\"%\\\",?,\\\"%\\\")) OR")
+				tmp.WriteString(" (name = ? AND age=? AND role LIKE concat(\"%\",?,\"%\")) OR")
 				params = append(params, user.Name, user.Age, user.Role)
 			}
 		}
@@ -159,11 +159,11 @@ func (e _QueryImpl[T]) FilterWithTime(ctx context.Context, start time.Time, end 
 	{
 		var tmp strings.Builder
 		if !start.IsZero() {
-			tmp.WriteString(" created_time > ?")
+			tmp.WriteString(" created_at > ?")
 			params = append(params, start)
 		}
 		if !end.IsZero() {
-			tmp.WriteString(" AND created_time < ?")
+			tmp.WriteString(" AND created_at < ?")
 			params = append(params, end)
 		}
 		c := strings.TrimSpace(tmp.String())
