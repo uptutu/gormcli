@@ -9,7 +9,7 @@ import (
 
 // Node is the interface that all AST nodes implement.
 type Node interface {
-	Emit(indent, target string) string
+	Emit(indent, target string, withPrefix bool) string
 }
 
 // TextNode holds plain text.
@@ -19,7 +19,7 @@ type TextNode struct {
 
 var rePlaceholder = regexp.MustCompile(`@@table|@@[A-Za-z0-9_.]+|@[A-Za-z0-9_.]+`)
 
-func (t *TextNode) Emit(indent, target string) string {
+func (t *TextNode) Emit(indent, target string, withPrefix bool) string {
 	str := strings.TrimSpace(t.Text)
 	if str == "" {
 		return ""
@@ -32,10 +32,10 @@ func (t *TextNode) Emit(indent, target string) string {
 	replaced := rePlaceholder.ReplaceAllStringFunc(str, func(ph string) string {
 		switch {
 		case ph == "@@table":
-			params = append(params, "clause.CurrentTable")
+			params = append(params, "clause.Table{Name: clause.CurrentTable}")
 			return "?"
 		case strings.HasPrefix(ph, "@@"):
-			params = append(params, fmt.Sprintf("gorm.Expr(\"?\", %s)", ph[2:]))
+			params = append(params, fmt.Sprintf("clause.Column{Name: %s}", ph[2:]))
 			return "?"
 		case strings.HasPrefix(ph, "@"):
 			params = append(params, ph[1:])
@@ -45,10 +45,13 @@ func (t *TextNode) Emit(indent, target string) string {
 	})
 
 	replaced = strings.ReplaceAll(replaced, escapedToken, "@")
-	replaced = strings.ReplaceAll(replaced, "\"", "\\\"")
+
+	if withPrefix {
+		replaced = " " + replaced
+	}
 
 	var out strings.Builder
-	out.WriteString(fmt.Sprintf("%sfmt.Fprint(&%s, %q, \" \")\n", indent, target, replaced))
+	out.WriteString(fmt.Sprintf("%s%s.WriteString(%q)\n", indent, target, replaced))
 	if len(params) > 0 {
 		out.WriteString(fmt.Sprintf("%sparams = append(params, %s)\n", indent, strings.Join(params, ", ")))
 	}
@@ -61,31 +64,28 @@ type FuncNode struct {
 	Body []Node
 }
 
-func (f *FuncNode) Emit(indent, target string) string {
+func (f *FuncNode) Emit(indent, target string, withPrefix bool) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%s{\n", indent))
 	b.WriteString(fmt.Sprintf("%s\tvar tmp strings.Builder\n", indent))
 	for _, c := range f.Body {
-		b.WriteString(c.Emit(indent+"\t", "tmp"))
+		b.WriteString(c.Emit(indent+"\t", "tmp", true))
 	}
 	b.WriteString(fmt.Sprintf("%s\tc := strings.TrimSpace(tmp.String())\n", indent))
 	b.WriteString(fmt.Sprintf("%s\tif c != \"\" {\n", indent))
 	switch f.Name {
 	case "where":
-		b.WriteString(fmt.Sprintf("%s\t\tfmt.Fprint(&%s, \"WHERE \")\n", indent, target))
-		b.WriteString(fmt.Sprintf("%s\t\tif len(c) >= 3 && strings.EqualFold(c[len(c)-3:], \"AND\") {\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(c[:len(c)-3])\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t} else if len(c) >= 2 && strings.EqualFold(c[len(c)-2:], \"OR\") {\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(c[:len(c)-2])\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t}\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\tfmt.Fprint(&%s, \"WHERE \")\n", indent, target))
-		b.WriteString(fmt.Sprintf("%s\t\tfmt.Fprint(&%s, c, \" \")\n", indent, target))
+		// Trim a single leading or trailing connector (AND/OR) using case-insensitive regex
+		// Require at least one whitespace after the leading token and before the trailing token
+		b.WriteString(fmt.Sprintf("%s\t\treTrim := regexp.MustCompile(`(?i)^\\s*(?:and|or)\\s+|\\s+(?:and|or)\\s*$`)\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\tc = reTrim.ReplaceAllString(c, \"\")\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\" WHERE \")\n", indent, target))
+		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(c)\n", indent, target))
 	case "set":
-		b.WriteString(fmt.Sprintf("%s\t\tif strings.HasSuffix(c, \",\") {\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t\tc = strings.TrimSpace(strings.TrimRight(c, \",\"))\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\t}\n", indent))
-		b.WriteString(fmt.Sprintf("%s\t\tfmt.Fprint(&%s, \"SET \")\n", indent, target))
-		b.WriteString(fmt.Sprintf("%s\t\tfmt.Fprint(&%s, c, \" \")\n", indent, target))
+		// Normalize by trimming commas and spaces from both ends
+		b.WriteString(fmt.Sprintf("%s\t\tc = strings.Trim(c, \", \")\n", indent))
+		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(\" SET \")\n", indent, target))
+		b.WriteString(fmt.Sprintf("%s\t\t%s.WriteString(c)\n", indent, target))
 	default:
 		panic(fmt.Sprintf("unsupported func %q in sql tempalte\n", f.Name))
 	}
@@ -100,11 +100,11 @@ type ForNode struct {
 	Body []Node
 }
 
-func (fn *ForNode) Emit(indent, target string) string {
+func (fn *ForNode) Emit(indent, target string, withPrefix bool) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%sfor %s {\n", indent, fn.Expr))
 	for _, c := range fn.Body {
-		b.WriteString(c.Emit(indent+"\t", target))
+		b.WriteString(c.Emit(indent+"\t", target, withPrefix))
 	}
 	b.WriteString(fmt.Sprintf("%s}\n", indent))
 	return b.String()
@@ -122,7 +122,7 @@ type IfNode struct {
 	ElseBody []Node
 }
 
-func (in *IfNode) Emit(indent, target string) string {
+func (in *IfNode) Emit(indent, target string, withPrefix bool) string {
 	var b strings.Builder
 	// if branches[0].Cond { ... } else if branches[1].Cond { ... } else ...
 	for i, br := range in.Branches {
@@ -132,13 +132,13 @@ func (in *IfNode) Emit(indent, target string) string {
 			b.WriteString(fmt.Sprintf("%s} else if %s {\n", indent, br.Cond))
 		}
 		for _, c := range br.Body {
-			b.WriteString(c.Emit(indent+"\t", target))
+			b.WriteString(c.Emit(indent+"\t", target, withPrefix))
 		}
 	}
 	if len(in.ElseBody) > 0 {
 		b.WriteString(fmt.Sprintf("%s} else {\n", indent))
 		for _, c := range in.ElseBody {
-			b.WriteString(c.Emit(indent+"\t", target))
+			b.WriteString(c.Emit(indent+"\t", target, withPrefix))
 		}
 	}
 	b.WriteString(fmt.Sprintf("%s}\n", indent))
@@ -326,8 +326,8 @@ func RenderSQLTemplate(tmpl string) (string, error) {
 		paramsCount int
 	)
 
-	for _, n := range root {
-		code := n.Emit("", "sb")
+	for idx, n := range root {
+		code := n.Emit("", "sb", idx != 0)
 		count, baseCount := 0, 1
 
 		for _, line := range strings.Split(code, "\n") {
@@ -340,7 +340,7 @@ func RenderSQLTemplate(tmpl string) (string, error) {
 		}
 
 		paramsCount += count
-		codes = append(codes, n.Emit("", "sb"))
+		codes = append(codes, code)
 	}
 
 	sb.WriteString("var sb strings.Builder\n")

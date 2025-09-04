@@ -19,13 +19,13 @@ type Query[T any] interface {
 	//   {{if user.ID > 0}}
 	//       WHERE id=@user.ID
 	//   {{else if user.Name != ""}}
-	//       WHERE username=@user.Name
+	//       WHERE name=@user.Name
 	//   {{end}}
 	QueryWith(user models.User) (T, error)
 
 	// UPDATE @@table
 	//  {{set}}
-	//    {{if user.Name != ""}} username=@user.Name, {{end}}
+	//    {{if user.Name != ""}} name=@user.Name, {{end}}
 	//    {{if user.Age > 0}} age=@user.Age, {{end}}
 	//    {{if user.Age >= 18}} is_adult=1 {{else}} is_adult=0 {{end}}
 	//  {{end}}
@@ -36,7 +36,7 @@ type Query[T any] interface {
 	// {{where}}
 	//   {{for _, user := range users}}
 	//     {{if user.Name != "" && user.Age > 0}}
-	//       (username = @user.Name AND age=@user.Age AND role LIKE concat("%",@user.Role,"%")) OR
+	//       (name = @user.Name AND age=@user.Age AND role LIKE concat("%",@user.Role,"%")) OR
 	//     {{end}}
 	//   {{end}}
 	// {{end}}
@@ -48,11 +48,12 @@ type Query[T any] interface {
 	// SELECT * FROM @@table
 	//  {{where}}
 	//    {{if !start.IsZero()}}
-	//      created_time > @start
+	//      created_at > @start
 	//    {{end}}
 	//    {{if !end.IsZero()}}
-	//      AND created_time < @end
+	//      AND created_at < @end
 	//    {{end}}
 	//  {{end}}
 	FilterWithTime(start, end time.Time) ([]T, error)
 }
+
