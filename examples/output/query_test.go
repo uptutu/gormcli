@@ -115,4 +115,3 @@ func TestUserQueries(t *testing.T) {
 		}
 	})
 }
-

@@ -17,9 +17,9 @@ var methodExpectedLines = map[string][]string{
 	},
 	"FilterWithColumn": {
 		"var sb strings.Builder",
-		"params := make([]any, 0, 4)",
+		"params := make([]any, 0, 3)",
 		`sb.WriteString("SELECT * FROM ? WHERE ?=?")`,
-		`params = append(params, clause.Table{Name: clause.CurrentTable}, gorm.Expr("?", column), value)`,
+		`params = append(params, clause.Table{Name: clause.CurrentTable}, clause.Column{Name: column}, value)`,
 	},
 	"QueryWith": {
 		"var sb strings.Builder",

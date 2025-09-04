@@ -35,7 +35,7 @@ func (t *TextNode) Emit(indent, target string, withPrefix bool) string {
 			params = append(params, "clause.Table{Name: clause.CurrentTable}")
 			return "?"
 		case strings.HasPrefix(ph, "@@"):
-			params = append(params, fmt.Sprintf("gorm.Expr(\"?\", %s)", ph[2:]))
+			params = append(params, fmt.Sprintf("clause.Column{Name: %s}", ph[2:]))
 			return "?"
 		case strings.HasPrefix(ph, "@"):
 			params = append(params, ph[1:])

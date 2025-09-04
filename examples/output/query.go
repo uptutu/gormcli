@@ -48,10 +48,10 @@ func (e _QueryImpl[T]) GetByID(ctx context.Context, id int) (T, error) {
 
 func (e _QueryImpl[T]) FilterWithColumn(ctx context.Context, column string, value string) (T, error) {
 	var sb strings.Builder
-	params := make([]any, 0, 4)
+	params := make([]any, 0, 3)
 
 	sb.WriteString("SELECT * FROM ? WHERE ?=?")
-	params = append(params, clause.Table{Name: clause.CurrentTable}, gorm.Expr("?", column), value)
+	params = append(params, clause.Table{Name: clause.CurrentTable}, clause.Column{Name: column}, value)
 
 	var result T
 	err := e.Raw(sb.String(), params...).Scan(ctx, &result)
