@@ -58,6 +58,9 @@ type Query[T any] interface {
     // SELECT * FROM @@table WHERE id=@id
     GetByID(id int) (T, error)
 
+    // SELECT * FROM @@table WHERE @@column=@value
+    FilterWithColumn(column string, value string) (T, error)
+
     // where("name=@name AND age=@age")
     FilterByNameAndAge(name string, age int)
 
@@ -87,10 +90,11 @@ func ExampleQuery(db *gorm.DB, ctx context.Context) {
     // Get a single user by ID
     user, err := generated.Query[User](db).GetByID(ctx, 123)
 
+    // Filter users by dynamic column and value
+    user, err := generated.Query[User](db).FilterWithColumn(ctx, "role", "admin")
+
     // Filter users by name and age
-    users, err := generated.Query[User](db).
-        FilterByNameAndAge("jinzhu", 25).
-        Find(ctx)
+    users, err := generated.Query[User](db).FilterByNameAndAge("jinzhu", 25).Find(ctx)
 
     // Conditional search using template logic
     users, err := generated.Query[User](db).
@@ -181,6 +185,9 @@ GORM CMD provides a SQL template DSL:
 ```sql
 -- Safe parameter binding
 SELECT * FROM @@table WHERE id=@id AND status=@status
+
+-- Dynamic column binding
+SELECT * FROM @@table WHERE @@column=@value
 
 -- Conditional WHERE
 SELECT * FROM @@table
