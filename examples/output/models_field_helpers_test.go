@@ -6,38 +6,11 @@ import (
 
     generated "gorm.io/cmd/gorm/examples/output/models"
     "gorm.io/cmd/gorm/examples/models"
-    "gorm.io/driver/sqlite"
     "gorm.io/gorm"
 )
 
-func setupHelpersDB(t *testing.T) *gorm.DB {
-    t.Helper()
-    db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-    if err != nil {
-        t.Fatalf("failed to connect database: %v", err)
-    }
-    if err := db.AutoMigrate(&models.User{}); err != nil {
-        t.Fatalf("failed to migrate database: %v", err)
-    }
-    return db
-}
-
-func seedUsers(t *testing.T, db *gorm.DB) []models.User {
-    t.Helper()
-    users := []models.User{
-        {Name: "alice", Age: 20, Role: "active", IsAdult: true},
-        {Name: "bob", Age: 17, Role: "active", IsAdult: false},
-        {Name: "cathy", Age: 30, Role: "pending", IsAdult: true},
-        {Name: "dan", Age: 40, Role: "pending", IsAdult: true},
-    }
-    if err := db.Create(&users).Error; err != nil {
-        t.Fatalf("failed to seed users: %v", err)
-    }
-    return users
-}
-
 func TestFieldHelpers_SingleCondition_FindWithContext(t *testing.T) {
-    db := setupHelpersDB(t)
+    db := setupTestDB(t)
     seedUsers(t, db)
 
     ctx := context.Background()
@@ -54,15 +27,15 @@ func TestFieldHelpers_SingleCondition_FindWithContext(t *testing.T) {
 }
 
 func TestFieldHelpers_MultipleConditions_FindIntoSlice(t *testing.T) {
-    db := setupHelpersDB(t)
+    db := setupTestDB(t)
     seedUsers(t, db)
 
     // Multiple conditions: age > 18 AND role = "active"
     var usersOver18Active []models.User
     if err := gorm.G[models.User](db).
         Where(generated.User.Age.Gt(18), generated.User.Role.Eq("active")).
-        Find(&usersOver18Active); err != nil {
-        t.Fatalf("Find(&slice) failed: %v", err)
+        Scan(context.Background(), &usersOver18Active); err != nil {
+        t.Fatalf("Scan(ctx, &slice) failed: %v", err)
     }
     if len(usersOver18Active) != 1 {
         t.Fatalf("expected 1 user (age>18 & active), got %d", len(usersOver18Active))
@@ -70,13 +43,13 @@ func TestFieldHelpers_MultipleConditions_FindIntoSlice(t *testing.T) {
 }
 
 func TestFieldHelpers_Update_UsingHelpers(t *testing.T) {
-    db := setupHelpersDB(t)
+    db := setupTestDB(t)
     seedUsers(t, db)
 
     // Update using helper-based WHERE: set role from "pending" -> "active"
-    if err := gorm.G[models.User](db).
+    if _, err := gorm.G[models.User](db).
         Where(generated.User.Role.Eq("pending")).
-        Update("role", "active"); err != nil {
+        Update(context.Background(), "role", "active"); err != nil {
         t.Fatalf("Update using helpers failed: %v", err)
     }
 
@@ -103,3 +76,45 @@ func TestFieldHelpers_Update_UsingHelpers(t *testing.T) {
     }
 }
 
+func TestFieldHelpers_Count(t *testing.T) {
+    db := setupTestDB(t)
+    seedUsers(t, db)
+
+    // Expect 2 active users from default seed
+    cnt, err := gorm.G[models.User](db).
+        Where(generated.User.Role.Eq("active")).
+        Count(context.Background(), "*")
+    if err != nil {
+        t.Fatalf("count failed: %v", err)
+    }
+    if cnt != 2 {
+        t.Fatalf("expected 2 active users, got %d", cnt)
+    }
+}
+
+func TestFieldHelpers_Delete(t *testing.T) {
+    db := setupTestDB(t)
+    seedUsers(t, db)
+
+    // Delete pendings
+    rows, err := gorm.G[models.User](db).
+        Where(generated.User.Role.Eq("pending")).
+        Delete(context.Background())
+    if err != nil {
+        t.Fatalf("delete failed: %v", err)
+    }
+    if rows != 2 {
+        t.Fatalf("expected to delete 2 rows, got %d", rows)
+    }
+
+    // Verify none pending left
+    pending, err := gorm.G[models.User](db).
+        Where(generated.User.Role.Eq("pending")).
+        Find(context.Background())
+    if err != nil {
+        t.Fatalf("verify query failed: %v", err)
+    }
+    if len(pending) != 0 {
+        t.Fatalf("expected 0 pending, got %d", len(pending))
+    }
+}
