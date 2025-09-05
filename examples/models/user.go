@@ -16,6 +16,8 @@ type User struct {
 	Name      string
 	Age       int
 	Birthday  *time.Time
+	Score     sql.NullInt64
+	LastLogin sql.NullTime
 	Account   Account
 	Pets      []*Pet
 	Toys      []Toy `gorm:"polymorphic:Owner"`
@@ -32,8 +34,10 @@ type User struct {
 
 type Account struct {
 	gorm.Model
-	UserID sql.NullInt64
-	Number string
+	UserID       sql.NullInt64
+	Number       string
+	RewardPoints sql.NullInt64
+	LastUsedAt   sql.NullTime
 }
 
 type Pet struct {

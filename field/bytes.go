@@ -14,8 +14,9 @@ type Bytes struct {
 // This method allows you to change the column name while keeping other properties.
 //
 // Example:
-//   avatar := field.Bytes{column: clause.Column{Name: "user_avatar"}}
-//   thumbnail := avatar.WithColumn("thumbnail")
+//
+//	avatar := field.Bytes{column: clause.Column{Name: "user_avatar"}}
+//	thumbnail := avatar.WithColumn("thumbnail")
 func (b Bytes) WithColumn(name string) Bytes {
 	column := b.column
 	column.Name = name
@@ -26,8 +27,9 @@ func (b Bytes) WithColumn(name string) Bytes {
 // This method is useful when working with joins and you need to qualify the column with a table name.
 //
 // Example:
-//   avatar := field.Bytes{column: clause.Column{Name: "avatar"}}
-//   userAvatar := avatar.WithTable("users")
+//
+//	avatar := field.Bytes{column: clause.Column{Name: "avatar"}}
+//	userAvatar := avatar.WithTable("users")
 func (b Bytes) WithTable(name string) Bytes {
 	column := b.column
 	column.Table = name

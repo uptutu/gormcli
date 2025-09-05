@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
-	"gorm.io/gorm/schema"
 )
 
 type Generator struct {
@@ -37,7 +36,7 @@ func (g *Generator) Process(input, output string) error {
 			if err != nil {
 				return err
 			}
-			if !info.IsDir() && strings.HasSuffix(path, ".go") {
+			if !info.IsDir() {
 				return g.processFile(path, output, inputRoot)
 			}
 			return nil
@@ -65,9 +64,13 @@ func (g *Generator) Gen() error {
 		}
 
 		fmt.Printf("Generating file %s from %s...\n", file.outputPath, file.inputPath)
-		err = tmpl.Execute(f, file)
-		if err != nil {
+		if err := tmpl.Execute(f, file); err != nil {
 			panic(fmt.Sprintf("failed to render template %v, got error %v", file.inputPath, err))
+		}
+
+		// Ensure file is closed before formatting pass reads it
+		if err := f.Close(); err != nil {
+			panic(fmt.Sprintf("failed to close file %v, got error %v", file.outputPath, err))
 		}
 
 		if result, err := imports.Process(file.outputPath, nil, nil); err == nil {
@@ -111,7 +114,7 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 
 	file := &File{Package: f.Name.Name, inputPath: inputFile, outputPath: outFile}
 
-	// Get current package's full import path and add to imports
+	// Add current package to imports for alias/path resolution and generation needs
 	if pkgPath := getCurrentPackagePath(inputFile); pkgPath != "" {
 		file.Imports = append(file.Imports, Import{
 			Name: f.Name.Name,
@@ -131,6 +134,10 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 
 // shouldSkipFile checks if a file contains the generated code header and should be skipped
 func shouldSkipFile(filePath string) bool {
+	if !strings.HasSuffix(filePath, ".go") {
+		return true
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return false // If we can't read the file, don't skip it
@@ -423,6 +430,11 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 			fieldTag = field.Tag.Value
 		}
 
+		// Only keep allowed fields; skip associations and unhandled complex types
+		if !p.isAllowedField(field, pkgName) {
+			continue
+		}
+
 		// Add fields to struct
 		for _, n := range field.Names {
 			dbName := generateDBName(n.Name, fieldTag)
@@ -435,6 +447,13 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 	}
 
 	return s
+}
+
+// isAssociationField determines whether a field should be treated as an association and skipped
+// Keep primitives, time.Time, []byte, gorm.DeletedAt, and any type implementing
+// one of: database/sql.Scanner, database/sql/driver.Valuer, gorm.Valuer, schema.SerializerInterface.
+func (p *File) isAllowedField(field *ast.Field, pkgName string) bool {
+	return AllowedFieldByType(field.Type, pkgName, p.Imports, p.inputPath)
 }
 
 // parseFieldType extracts the type string from an AST field type expression
@@ -531,16 +550,7 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 }
 
 // generateDBName generates database column name using GORM's NamingStrategy
-func generateDBName(fieldName, gormTag string) string {
-	tagSettings := schema.ParseTagSetting(gormTag, ";")
-	if tagSettings["COLUMN"] != "" {
-		return tagSettings["COLUMN"]
-	}
-
-	// Use GORM's NamingStrategy with IdentifierMaxLength: 64
-	ns := schema.NamingStrategy{IdentifierMaxLength: 64}
-	return ns.ColumnName("", fieldName)
-}
+// generateDBName moved to utils.go for reuse
 
 // loadStructFromPackage loads a struct type definition from an external package by name
 func (p *File) loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {

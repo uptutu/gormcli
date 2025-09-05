@@ -56,4 +56,3 @@ type Query[T any] interface {
 	//  {{end}}
 	FilterWithTime(start, end time.Time) ([]T, error)
 }
-

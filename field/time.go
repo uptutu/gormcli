@@ -16,8 +16,9 @@ type Time struct {
 // This method allows you to change the column name while keeping other properties.
 //
 // Example:
-//   createdAt := field.Time{column: clause.Column{Name: "created_at"}}
-//   updatedAt := createdAt.WithColumn("updated_at")
+//
+//	createdAt := field.Time{column: clause.Column{Name: "created_at"}}
+//	updatedAt := createdAt.WithColumn("updated_at")
 func (t Time) WithColumn(name string) Time {
 	column := t.column
 	column.Name = name
@@ -28,8 +29,9 @@ func (t Time) WithColumn(name string) Time {
 // This method is useful when working with joins and you need to qualify the column with a table name.
 //
 // Example:
-//   createdAt := field.Time{column: clause.Column{Name: "created_at"}}
-//   userCreatedAt := createdAt.WithTable("users")
+//
+//	createdAt := field.Time{column: clause.Column{Name: "created_at"}}
+//	userCreatedAt := createdAt.WithTable("users")
 func (t Time) WithTable(name string) Time {
 	column := t.column
 	column.Table = name
