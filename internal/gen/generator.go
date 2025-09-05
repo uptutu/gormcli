@@ -37,7 +37,7 @@ func (g *Generator) Process(input, output string) error {
 			if err != nil {
 				return err
 			}
-			if !info.IsDir() {
+			if !info.IsDir() && strings.HasSuffix(path, ".go") {
 				return g.processFile(path, output, inputRoot)
 			}
 			return nil
@@ -119,10 +119,13 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 		})
 	}
 
-	g.Files = append(g.Files, file)
-
 	ast.Walk(file, f)
 
+	if len(file.Interfaces) > 0 || len(file.Structs) > 0 {
+		g.Files = append(g.Files, file)
+	} else {
+		fmt.Printf("Skipping generated file: %s\n", inputFile)
+	}
 	return nil
 }
 
