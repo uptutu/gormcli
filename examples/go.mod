@@ -1,4 +1,4 @@
-module gorm.io/cmd/gorm/examples/output
+module gorm.io/cmd/gorm/examples
 
 go 1.24.0
 
@@ -12,7 +12,8 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
 	golang.org/x/text v0.28.0 // indirect
 )
 
-replace gorm.io/cmd/gorm => ../../
+replace gorm.io/cmd/gorm => ../
