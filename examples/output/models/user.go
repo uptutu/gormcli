@@ -3,6 +3,8 @@
 package models
 
 import (
+	"database/sql"
+
 	"gorm.io/cmd/gorm/field"
 	"gorm.io/gorm"
 )
@@ -14,6 +16,11 @@ var User = struct {
 	DeletedAt field.Field[gorm.DeletedAt]
 	Name      field.String
 	Age       field.Number[int]
+	Birthday  field.Time
+	Score     field.Field[sql.NullInt64]
+	LastLogin field.Field[sql.NullTime]
+	CompanyID field.Number[int]
+	ManagerID field.Number[uint]
 	Role      field.String
 	IsAdult   field.Bool
 }{
@@ -23,6 +30,81 @@ var User = struct {
 	DeletedAt: field.Field[gorm.DeletedAt]{}.WithColumn("deleted_at"),
 	Name:      field.String{}.WithColumn("name"),
 	Age:       field.Number[int]{}.WithColumn("age"),
+	Birthday:  field.Time{}.WithColumn("birthday"),
+	Score:     field.Field[sql.NullInt64]{}.WithColumn("score"),
+	LastLogin: field.Field[sql.NullTime]{}.WithColumn("last_login"),
+	CompanyID: field.Number[int]{}.WithColumn("company_id"),
+	ManagerID: field.Number[uint]{}.WithColumn("manager_id"),
 	Role:      field.String{}.WithColumn("role"),
 	IsAdult:   field.Bool{}.WithColumn("is_adult"),
+}
+
+var Account = struct {
+	ID           field.Number[uint]
+	CreatedAt    field.Time
+	UpdatedAt    field.Time
+	DeletedAt    field.Field[gorm.DeletedAt]
+	UserID       field.Field[sql.NullInt64]
+	Number       field.String
+	RewardPoints field.Field[sql.NullInt64]
+	LastUsedAt   field.Field[sql.NullTime]
+}{
+	ID:           field.Number[uint]{}.WithColumn("id"),
+	CreatedAt:    field.Time{}.WithColumn("created_at"),
+	UpdatedAt:    field.Time{}.WithColumn("updated_at"),
+	DeletedAt:    field.Field[gorm.DeletedAt]{}.WithColumn("deleted_at"),
+	UserID:       field.Field[sql.NullInt64]{}.WithColumn("user_id"),
+	Number:       field.String{}.WithColumn("number"),
+	RewardPoints: field.Field[sql.NullInt64]{}.WithColumn("reward_points"),
+	LastUsedAt:   field.Field[sql.NullTime]{}.WithColumn("last_used_at"),
+}
+
+var Pet = struct {
+	ID        field.Number[uint]
+	CreatedAt field.Time
+	UpdatedAt field.Time
+	DeletedAt field.Field[gorm.DeletedAt]
+	UserID    field.Number[uint]
+	Name      field.String
+}{
+	ID:        field.Number[uint]{}.WithColumn("id"),
+	CreatedAt: field.Time{}.WithColumn("created_at"),
+	UpdatedAt: field.Time{}.WithColumn("updated_at"),
+	DeletedAt: field.Field[gorm.DeletedAt]{}.WithColumn("deleted_at"),
+	UserID:    field.Number[uint]{}.WithColumn("user_id"),
+	Name:      field.String{}.WithColumn("name"),
+}
+
+var Toy = struct {
+	ID        field.Number[uint]
+	CreatedAt field.Time
+	UpdatedAt field.Time
+	DeletedAt field.Field[gorm.DeletedAt]
+	Name      field.String
+	OwnerID   field.Number[uint]
+	OwnerType field.String
+}{
+	ID:        field.Number[uint]{}.WithColumn("id"),
+	CreatedAt: field.Time{}.WithColumn("created_at"),
+	UpdatedAt: field.Time{}.WithColumn("updated_at"),
+	DeletedAt: field.Field[gorm.DeletedAt]{}.WithColumn("deleted_at"),
+	Name:      field.String{}.WithColumn("name"),
+	OwnerID:   field.Number[uint]{}.WithColumn("owner_id"),
+	OwnerType: field.String{}.WithColumn("owner_type"),
+}
+
+var Company = struct {
+	ID   field.Number[int]
+	Name field.String
+}{
+	ID:   field.Number[int]{}.WithColumn("id"),
+	Name: field.String{}.WithColumn("name"),
+}
+
+var Language = struct {
+	Code field.String
+	Name field.String
+}{
+	Code: field.String{}.WithColumn("code"),
+	Name: field.String{}.WithColumn("name"),
 }

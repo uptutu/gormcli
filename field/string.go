@@ -14,8 +14,9 @@ type String struct {
 // This method allows you to change the column name while keeping other properties.
 //
 // Example:
-//   name := field.String{column: clause.Column{Name: "user_name"}}
-//   fullName := name.WithColumn("full_name")
+//
+//	name := field.String{column: clause.Column{Name: "user_name"}}
+//	fullName := name.WithColumn("full_name")
 func (s String) WithColumn(name string) String {
 	column := s.column
 	column.Name = name
@@ -26,8 +27,9 @@ func (s String) WithColumn(name string) String {
 // This method is useful when working with joins and you need to qualify the column with a table name.
 //
 // Example:
-//   name := field.String{column: clause.Column{Name: "name"}}
-//   userName := name.WithTable("users")
+//
+//	name := field.String{column: clause.Column{Name: "name"}}
+//	userName := name.WithTable("users")
 func (s String) WithTable(name string) String {
 	column := s.column
 	column.Table = name

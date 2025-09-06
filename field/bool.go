@@ -133,10 +133,11 @@ func (b Bool) SetExpr(expr clause.Expression) clause.Assignment {
 // Use this to combine the boolean field with another expression using logical AND.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   isEnabled := field.Bool{column: clause.Column{Name: "is_enabled"}}
-//   // Generate: WHERE is_active AND is_enabled
-//   condition := isActive.AndExpr(isEnabled)
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	isEnabled := field.Bool{column: clause.Column{Name: "is_enabled"}}
+//	// Generate: WHERE is_active AND is_enabled
+//	condition := isActive.AndExpr(isEnabled)
 func (b Bool) AndExpr(expr clause.Expression) clause.Expression {
 	return clause.Expr{SQL: "? AND ?", Vars: []any{b.column, expr}}
 }
@@ -145,10 +146,11 @@ func (b Bool) AndExpr(expr clause.Expression) clause.Expression {
 // Use this to combine the boolean field with another expression using logical OR.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   isEnabled := field.Bool{column: clause.Column{Name: "is_enabled"}}
-//   // Generate: WHERE is_active OR is_enabled
-//   condition := isActive.OrExpr(isEnabled)
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	isEnabled := field.Bool{column: clause.Column{Name: "is_enabled"}}
+//	// Generate: WHERE is_active OR is_enabled
+//	condition := isActive.OrExpr(isEnabled)
 func (b Bool) OrExpr(expr clause.Expression) clause.Expression {
 	return clause.Expr{SQL: "? OR ?", Vars: []any{b.column, expr}}
 }
@@ -157,9 +159,10 @@ func (b Bool) OrExpr(expr clause.Expression) clause.Expression {
 // Use this to negate the boolean field value.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   // Generate: WHERE NOT is_active
-//   condition := isActive.Not()
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	// Generate: WHERE NOT is_active
+//	condition := isActive.Not()
 func (b Bool) Not() clause.Expression {
 	return clause.Expr{SQL: "NOT ?", Vars: []any{b.column}}
 }
@@ -168,9 +171,10 @@ func (b Bool) Not() clause.Expression {
 // Use this to create an exclusive OR condition between the field and a boolean value.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   // Generate: WHERE is_active XOR true
-//   condition := isActive.Xor(true)
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	// Generate: WHERE is_active XOR true
+//	condition := isActive.Xor(true)
 func (b Bool) Xor(value bool) clause.Expression {
 	return clause.Expr{SQL: "? XOR ?", Vars: []any{b.column, value}}
 }
@@ -179,10 +183,11 @@ func (b Bool) Xor(value bool) clause.Expression {
 // Use this to create an exclusive OR condition between the field and another expression.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   isEnabled := field.Bool{column: clause.Column{Name: "is_enabled"}}
-//   // Generate: WHERE is_active XOR is_enabled
-//   condition := isActive.XorExpr(isEnabled)
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	isEnabled := field.Bool{column: clause.Column{Name: "is_enabled"}}
+//	// Generate: WHERE is_active XOR is_enabled
+//	condition := isActive.XorExpr(isEnabled)
 func (b Bool) XorExpr(expr clause.Expression) clause.Expression {
 	return clause.Expr{SQL: "? XOR ?", Vars: []any{b.column, expr}}
 }
@@ -191,9 +196,10 @@ func (b Bool) XorExpr(expr clause.Expression) clause.Expression {
 // Use this to create complex SQL expressions with placeholders and values.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   // Generate: WHERE is_active AND status IN ('active', 'pending')
-//   condition := isActive.Expr("? AND status IN (?, ?)", isActive, "active", "pending")
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	// Generate: WHERE is_active AND status IN ('active', 'pending')
+//	condition := isActive.Expr("? AND status IN (?, ?)", isActive, "active", "pending")
 func (b Bool) Expr(expr string, values ...any) clause.Expression {
 	return clause.Expr{SQL: expr, Vars: values}
 }
@@ -204,9 +210,10 @@ func (b Bool) Expr(expr string, values ...any) clause.Expression {
 // Use this to sort the boolean field in ascending order (false before true).
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   // Generate: ORDER BY is_active ASC
-//   order := isActive.Asc()
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	// Generate: ORDER BY is_active ASC
+//	order := isActive.Asc()
 func (b Bool) Asc() clause.OrderByColumn {
 	return clause.OrderByColumn{Column: b.column, Desc: false}
 }
@@ -215,9 +222,10 @@ func (b Bool) Asc() clause.OrderByColumn {
 // Use this to sort the boolean field in descending order (true before false).
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   // Generate: ORDER BY is_active DESC
-//   order := isActive.Desc()
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	// Generate: ORDER BY is_active DESC
+//	order := isActive.Desc()
 func (b Bool) Desc() clause.OrderByColumn {
 	return clause.OrderByColumn{Column: b.column, Desc: true}
 }
@@ -226,9 +234,10 @@ func (b Bool) Desc() clause.OrderByColumn {
 // Use this to create complex ordering expressions for boolean fields.
 //
 // Example:
-//   isActive := field.Bool{column: clause.Column{Name: "is_active"}}
-//   // Generate: ORDER BY CASE WHEN is_active THEN 0 ELSE 1 END
-//   order := isActive.OrderExpr("CASE WHEN ? THEN 0 ELSE 1 END", isActive)
+//
+//	isActive := field.Bool{column: clause.Column{Name: "is_active"}}
+//	// Generate: ORDER BY CASE WHEN is_active THEN 0 ELSE 1 END
+//	order := isActive.OrderExpr("CASE WHEN ? THEN 0 ELSE 1 END", isActive)
 func (b Bool) OrderExpr(expr string, values ...any) clause.Expression {
 	return clause.Expr{SQL: expr, Vars: values}
 }

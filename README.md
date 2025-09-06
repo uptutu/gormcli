@@ -142,6 +142,10 @@ generated.User.Name.IsNotNull()      // name IS NOT NULL
 generated.User.Age.Gt(18)            // age > 18
 generated.User.Age.Between(18, 65)   // age BETWEEN 18 AND 65
 
+// Nullable (Scanner/Valuer) types
+generated.User.Score.IsNull()        // score IS NULL (sql.NullInt64)
+generated.User.LastLogin.IsNotNull() // last_login IS NOT NULL (sql.NullTime)
+
 // ... more, see https://pkg.go.dev/gorm.io/cmd/gorm/field
 ```
 
@@ -163,6 +167,22 @@ gorm.G[User](db).
     Where(generated.User.Status.Eq("pending")).
     Update("status", "active")
 ```
+
+---
+
+## 🧠 How Fields Are Chosen
+
+GORM CMD generates field helpers only for “column-like” fields on your model and skips associations.
+
+- Included:
+  - Built-ins: all integers, floats, `string`, `bool`, `time.Time`, `[]byte`
+  - Any named type implementing one of:
+    - `database/sql.Scanner`
+    - `database/sql/driver.Valuer`
+    - `gorm.io/gorm.Valuer`
+    - `gorm.io/gorm/schema.SerializerInterface`
+- Excluded:
+  - Associations such as `has one`, `has many`, `belongs to`, `many2many`, and embedded slices/structs used as relations
 
 ---
 
