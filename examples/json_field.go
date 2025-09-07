@@ -1,6 +1,11 @@
 package examples
 
-import "gorm.io/gorm/clause"
+import (
+	"encoding/json"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
 
 // JSON is an example field wrapper for JSON columns.
 //
@@ -32,7 +37,46 @@ func (j JSON) Contains(value any) clause.Expression {
 // Example: json_extract(column, '$.vip') = 1
 // Path must be a valid JSON path like "$.vip".
 func (j JSON) Equal(path string, value any) clause.Expression {
-	// Guard with json_valid to avoid "malformed JSON" errors for empty/non-JSON text
-	// Uses column twice: once for json_valid, once for json_extract
-	return clause.Expr{SQL: "json_valid(?) AND json_extract(?, ?) = ?", Vars: []any{j.column, j.column, path, value}}
+	return jsonEqualExpr{col: j.column, path: path, val: value}
+}
+
+type jsonEqualExpr struct {
+	col  clause.Column
+	path string
+	val  any
+}
+
+func (e jsonEqualExpr) Build(builder clause.Builder) {
+	if stmt, ok := builder.(*gorm.Statement); ok {
+		switch stmt.Dialector.Name() {
+		case "mysql":
+			// Compare JSON to JSON using JSON_EXTRACT(column, path) = CAST(? AS JSON)
+			// This avoids dialect boolean quirks and works for all JSON scalars and null.
+			valJSON, _ := json.Marshal(e.val)
+			builder.WriteString("JSON_EXTRACT(")
+			builder.AddVar(builder, e.col)
+			builder.WriteString(", ")
+			builder.AddVar(builder, e.path)
+			builder.WriteString(") = CAST(")
+			builder.AddVar(builder, string(valJSON))
+			builder.WriteString(" AS JSON)")
+		case "sqlite":
+			// SQLite: guard invalid JSON and compare scalar via json_extract
+			builder.WriteString("json_valid(")
+			builder.AddVar(builder, e.col)
+			builder.WriteString(") AND json_extract(")
+			builder.AddVar(builder, e.col)
+			builder.WriteString(", ")
+			builder.AddVar(builder, e.path)
+			builder.WriteString(") = ")
+			builder.AddVar(builder, e.val)
+		default:
+			builder.WriteString("JSON_EXTRACT(")
+			builder.AddVar(builder, e.col)
+			builder.WriteString(", ")
+			builder.AddVar(builder, e.path)
+			builder.WriteString(") = ")
+			builder.AddVar(builder, e.val)
+		}
+	}
 }

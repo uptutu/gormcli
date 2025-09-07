@@ -467,7 +467,6 @@ func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 						// Values are wrapper type instances like JSON{} or field.Time{}
 						// Use the current file's package to qualify local identifiers
 						valType := p.parseFieldType(pair.Value, p.Package)
-						fmt.Println(valType)
 						if keyIdent.Name == "FieldNameMap" {
 							// Keys are strings for FieldNameMap
 							if key := strLit(pair.Key); key != "" && valType != "" {
