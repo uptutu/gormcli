@@ -51,8 +51,7 @@ func Example(db *gorm.DB, ctx context.Context) {
 
 ### Template-based Query Generation
 
-Define SQL templates in Go interfaces.
-GORM CMD generates strongly typed implementations with parameter binding and compile-time validation.
+Write SQL/templating in interface method comments. Placeholders bind to method parameters automatically, and concrete, type‑safe implementations are generated.
 
 ```go
 type Query[T any] interface {
@@ -84,6 +83,8 @@ type Query[T any] interface {
 
 #### Usage
 
+Usage notes (ctx auto‑injection): if a method signature doesn’t include `ctx context.Context`, the generator adds it as the first parameter of the implementation.
+
 ```go
 import "your_project/generated"
 
@@ -111,8 +112,7 @@ func ExampleQuery(db *gorm.DB, ctx context.Context) {
 
 ### Field Helper Generation
 
-Generate strongly typed field helpers for struct fields.
-These enable expressive, compile-time validated queries.
+Helpers are generated for “column‑like” fields on your models. These enable expressive, compile-time validated queries.
 
 #### Example Model
 
@@ -173,17 +173,11 @@ gorm.G[User](db).
 
 ## 🧠 How Fields Are Chosen
 
-GORM CMD generates field helpers only for “column-like” fields on your model and skips associations.
-
-- Included:
-  - Built-ins: all integers, floats, `string`, `bool`, `time.Time`, `[]byte`
-  - Any named type implementing one of:
-    - `database/sql.Scanner`
-    - `database/sql/driver.Valuer`
-    - `gorm.io/gorm.Valuer`
-    - `gorm.io/gorm/schema.SerializerInterface`
-- Excluded:
-  - Associations such as `has one`, `has many`, `belongs to`, `many2many`, and embedded slices/structs used as relations
+Helpers are generated only for “column‑like” fields; associations are skipped.
+- Included: all integers, floats, `string`, `bool`, `time.Time`, `[]byte`, and any named type implementing one of:
+  - `database/sql.Scanner`, `database/sql/driver.Valuer`
+  - `gorm.io/gorm.Valuer`, `gorm.io/gorm/schema.SerializerInterface`
+- Excluded: `has one`, `has many`, `belongs to`, `many2many`, and embedded slices/structs that represent relations
 
 ---
 
@@ -236,9 +230,9 @@ SELECT * FROM @@table
 
 ---
 
-## Generation Config
+## Generation Config (optional)
 
-Declare a package-level `genconfig.Config` in the package you want to generate for. The generator will pick it up automatically:
+You don’t need any configuration to use the generator. For overrides, declare a package‑level `genconfig.Config` in the package being generated — the generator will pick it up automatically.
 
 ```go
 package examples
@@ -250,7 +244,7 @@ import (
 )
 
 var _ = genconfig.Config{
-    // Output directory for generated files in this package (overrides CLI -o)
+    // Override CLI -o for files in this package
     OutPath: "examples/output",
 
     // Map Go types to field helper types
@@ -258,12 +252,13 @@ var _ = genconfig.Config{
         sql.NullTime{}: field.Time{},
     },
 
+    // Map `gen:"name"` names to helper types
     FieldNameMap: map[string]any{
         "date": field.Time{},  // map fields with `gen:"date"` tag to Time field helper
         "json": JSON{},        // map fields with `gen:"json"` tag to custom JSON helper
     },
 
-    // If true, the config applies only to the current file rather than the entire package
+    // When true, apply only to current file instead of the whole package
     FileLevel: false,
 }
 ```
