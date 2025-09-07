@@ -33,7 +33,7 @@ func New() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&output, "output", "o", "./g", "Directory to place generated code")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "Directory to place generated code")
 	cmd.Flags().StringVarP(&input, "input", "i", "", "Path to Go interface file with raw SQL annotations")
 	cmd.MarkFlagRequired("input")
 

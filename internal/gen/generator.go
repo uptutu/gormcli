@@ -81,6 +81,9 @@ func (g *Generator) Gen() error {
 				mergeImports(&file.Imports, g.Files[fileCfgs[i]].Imports)
 			}
 		}
+		if outPath == "" {
+			outPath = "./g"
+		}
 		outPath = filepath.Join(outPath, file.relPath)
 
 		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
@@ -555,16 +558,18 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 
 		// Add fields to struct
 		for _, n := range field.Names {
-			dbName := generateDBName(n.Name, fieldTag)
-			f := Field{
-				Name:        n.Name,
-				DBName:      dbName,
-				GoType:      fieldType,
-				GoTypeAlias: reflect.StructTag(fieldTag).Get("gen"),
-				Tag:         fieldTag,
-				file:        p,
+			if n.IsExported() {
+				dbName := generateDBName(n.Name, fieldTag)
+				f := Field{
+					Name:        n.Name,
+					DBName:      dbName,
+					GoType:      fieldType,
+					GoTypeAlias: reflect.StructTag(fieldTag).Get("gen"),
+					Tag:         fieldTag,
+					file:        p,
+				}
+				s.Fields = append(s.Fields, f)
 			}
-			s.Fields = append(s.Fields, f)
 		}
 	}
 
