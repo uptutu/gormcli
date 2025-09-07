@@ -228,3 +228,17 @@ func AllowedFieldByType(expr ast.Expr, pkgAlias string, imports []Import, filePa
 	}
 	return false
 }
+
+// mergeImports appends imports from src into dst if not already present (by Path)
+func mergeImports(dst *[]Import, src []Import) {
+	existing := map[string]bool{}
+	for _, i := range *dst {
+		existing[i.Path] = true
+	}
+	for _, i := range src {
+		if !existing[i.Path] {
+			*dst = append(*dst, i)
+			existing[i.Path] = true
+		}
+	}
+}

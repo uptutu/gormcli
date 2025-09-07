@@ -1,10 +1,25 @@
 package examples
 
 import (
+	"database/sql"
 	"time"
 
 	"gorm.io/cmd/gorm/examples/models"
+	"gorm.io/cmd/gorm/field"
+	"gorm.io/cmd/gorm/genconfig"
 )
+
+var _ = genconfig.Config{
+	OutPath: "examples/output",
+	Package: true,
+	FieldTypeMap: map[any]any{
+		sql.NullTime{}: field.Time{},
+	},
+	FieldNameMap: map[string]any{
+		"date": field.Time{},
+		"json": JSON{},
+	},
+}
 
 type Query[T any] interface {
 	// GetByID query data by id and return it as struct

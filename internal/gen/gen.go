@@ -16,7 +16,8 @@ func New() *cobra.Command {
 		Short: "Generate GORM query code from raw SQL interfaces",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			g := Generator{
-				Name: filepath.Base(output),
+				Name:  filepath.Base(output),
+				Files: map[string]*File{},
 			}
 
 			err := g.Process(input, output)
