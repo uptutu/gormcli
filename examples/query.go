@@ -11,7 +11,6 @@ import (
 
 var _ = genconfig.Config{
 	OutPath: "examples/output",
-	Package: true,
 	FieldTypeMap: map[any]any{
 		sql.NullTime{}: field.Time{},
 	},

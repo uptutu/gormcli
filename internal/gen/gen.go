@@ -2,7 +2,6 @@ package gen
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -16,11 +15,11 @@ func New() *cobra.Command {
 		Short: "Generate GORM query code from raw SQL interfaces",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			g := Generator{
-				Name:  filepath.Base(output),
-				Files: map[string]*File{},
+				Files:   map[string]*File{},
+				outPath: output,
 			}
 
-			err := g.Process(input, output)
+			err := g.Process(input)
 			if err != nil {
 				return fmt.Errorf("error processing %s: %v", input, err)
 			}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,12 +21,12 @@ import (
 )
 
 type Generator struct {
-	Name  string
-	Files map[string]*File
+	Files   map[string]*File
+	outPath string
 }
 
 // Process processes input files or directories and generates code
-func (g *Generator) Process(input, output string) error {
+func (g *Generator) Process(input string) error {
 	info, err := os.Stat(input)
 	if err != nil {
 		return err
@@ -36,13 +37,13 @@ func (g *Generator) Process(input, output string) error {
 		inputRoot, _ := filepath.Abs(input)
 		return filepath.Walk(input, func(path string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() {
-				return g.processFile(path, output, inputRoot)
+				return g.processFile(path, inputRoot)
 			}
 			return err
 		})
 	}
 	inputRoot, _ := filepath.Abs(filepath.Dir(input))
-	return g.processFile(input, output, inputRoot)
+	return g.processFile(input, inputRoot)
 }
 
 // Gen generates code files from processed AST data
@@ -52,137 +53,66 @@ func (g *Generator) Gen() error {
 		panic(err)
 	}
 
+	fileCfgs := []string{}
+	for pth, file := range g.Files {
+		if file.Config != nil {
+			fileCfgs = append(fileCfgs, pth)
+		}
+	}
+	sort.Strings(fileCfgs)
+
 	for _, file := range g.Files {
 		if len(file.Interfaces) == 0 && len(file.Structs) == 0 {
 			continue
 		}
 
-		imps := g.resolveConfigImports(file.inputPath)
-		mergeImports(&file.Imports, imps)
-		if file.Config == nil || file.Config.OutPath == "" {
-			if out := g.resolveOutPath(file.inputPath); out != "" {
-				outputDir := filepath.Join(out, filepath.Dir(file.relPath))
-				outFile, _ := filepath.Abs(filepath.Join(outputDir, file.outputName))
-				file.outputPath = outFile
+		outPath := g.outPath
+		for i := len(fileCfgs) - 1; i >= 0; i-- {
+			prefix := fileCfgs[i]
+			if !g.Files[fileCfgs[i]].Config.FileLevel {
+				prefix = filepath.Dir(fileCfgs[i])
+			}
+			if strings.HasPrefix(file.inputPath, prefix) {
+				if outPath == "" {
+					outPath = g.Files[fileCfgs[i]].Config.OutPath
+				}
+
+				file.applicableConfigs = append(file.applicableConfigs, g.Files[fileCfgs[i]].Config)
+				mergeImports(&file.Imports, g.Files[fileCfgs[i]].Imports)
 			}
 		}
+		outPath = filepath.Join(outPath, file.relPath)
 
-		if err := os.MkdirAll(filepath.Dir(file.outputPath), 0o755); err != nil {
-			panic(fmt.Sprintf("failed to create directory for %v, got error %v", file.outputPath, err))
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			panic(fmt.Sprintf("failed to create directory for %v, got error %v", outPath, err))
 		}
 
-		f, err := os.Create(file.outputPath)
+		f, err := os.Create(outPath)
 		if err != nil {
-			panic(fmt.Sprintf("failed to create file %v, got error %v", file.outputPath, err))
+			panic(fmt.Sprintf("failed to create file %v, got error %v", outPath, err))
 		}
 
-		fmt.Printf("Generating file %s from %s...\n", file.outputPath, file.inputPath)
+		fmt.Printf("Generating file %s from %s...\n", outPath, file.inputPath)
 		if err := tmpl.Execute(f, file); err != nil {
 			panic(fmt.Sprintf("failed to render template %v, got error %v", file.inputPath, err))
 		}
 
 		// Ensure file is closed before formatting pass reads it
 		if err := f.Close(); err != nil {
-			panic(fmt.Sprintf("failed to close file %v, got error %v", file.outputPath, err))
+			panic(fmt.Sprintf("failed to close file %v, got error %v", outPath, err))
 		}
 
-		if result, err := imports.Process(file.outputPath, nil, nil); err == nil {
-			if err := os.WriteFile(file.outputPath, result, 0o640); err != nil {
-				panic(fmt.Sprintf("failed to write file %v, got error %v", file.outputPath, err))
+		if result, err := imports.Process(outPath, nil, nil); err == nil {
+			if err := os.WriteFile(outPath, result, 0o640); err != nil {
+				panic(fmt.Sprintf("failed to write file %v, got error %v", outPath, err))
 			}
 		}
 	}
 	return nil
-}
-
-// applicableConfigs returns the most specific file that carries a Config for filePath.
-// Longest-path-first among file-level and package-level configs; returns at most one.
-func (g *Generator) applicableConfigs(filePath string) []*File {
-	abs, _ := filepath.Abs(filePath)
-	type keyEntry struct {
-		key   string
-		isPkg bool
-		f     *File
-	}
-	var keys []keyEntry
-	for _, f := range g.Files {
-		if f.Config == nil {
-			continue
-		}
-		if f.Config.Package {
-			keys = append(keys, keyEntry{key: filepath.Dir(f.inputPath), isPkg: true, f: f})
-		} else {
-			keys = append(keys, keyEntry{key: f.inputPath, isPkg: false, f: f})
-		}
-	}
-	sort.Slice(keys, func(i, j int) bool { return len(keys[i].key) > len(keys[j].key) })
-	for _, k := range keys {
-		if !k.isPkg {
-			if samePath(k.key, abs) {
-				return []*File{k.f}
-			}
-			continue
-		}
-		if hasPathPrefix(abs, k.key) {
-			return []*File{k.f}
-		}
-	}
-	return nil
-}
-
-func (g *Generator) resolveWrapperType(filePath, dbName, fieldName, goType string) string {
-	for _, f := range g.applicableConfigs(filePath) {
-		if s := lookupWrapperByNameAndType(f.Config, dbName, fieldName, goType); s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-func (g *Generator) resolveOutPath(filePath string) string {
-	for _, f := range g.applicableConfigs(filePath) {
-		if f.Config.OutPath != "" {
-			return f.Config.OutPath
-		}
-	}
-	return ""
-}
-
-func (g *Generator) resolveConfigImports(filePath string) []Import {
-	var imps []Import
-	for _, f := range g.applicableConfigs(filePath) {
-		mergeImports(&imps, f.Imports)
-	}
-	return imps
-}
-
-func samePath(a, b string) bool {
-	if a == b {
-		return true
-	}
-	aa, _ := filepath.Abs(a)
-	bb, _ := filepath.Abs(b)
-	return aa == bb
-}
-
-// hasPathPrefix reports whether filePath is under dir (or equal), respecting separators.
-func hasPathPrefix(filePath, dir string) bool {
-	ff := filepath.Clean(filePath)
-	dd := filepath.Clean(dir)
-	if ff == dd {
-		return true
-	}
-	if dd == "." || dd == "" {
-		return true
-	}
-	if strings.HasSuffix(dd, string(os.PathSeparator)) {
-		dd = strings.TrimRight(dd, string(os.PathSeparator))
-	}
-	return strings.HasPrefix(ff, dd+string(os.PathSeparator))
 }
 
 // processFile processes a single Go file and extracts AST information
-func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
+func (g *Generator) processFile(inputFile, inputRoot string) error {
 	inputFile, err := filepath.Abs(inputFile)
 	if err != nil {
 		return err
@@ -196,14 +126,8 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 	// Calculate relative path from input root to maintain directory structure
 	relPath, err := filepath.Rel(inputRoot, inputFile)
 	if err != nil {
-		// Fallback to just filename if relative path calculation fails
 		relPath = filepath.Base(inputFile)
 	}
-
-	// Create the full output directory path (may be overridden by config after parsing)
-	outputDir := filepath.Join(outPath, filepath.Dir(relPath))
-	outputName := filepath.Base(relPath)
-	outFile, _ := filepath.Abs(filepath.Join(outputDir, outputName))
 
 	fileset := token.NewFileSet()
 	f, err := parser.ParseFile(fileset, inputFile, nil, parser.ParseComments)
@@ -211,7 +135,7 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 		return fmt.Errorf("can't parse file %q: %s", inputFile, err)
 	}
 
-	file := &File{Package: f.Name.Name, inputPath: inputFile, outputPath: outFile, relPath: relPath, outputName: outputName, gen: g}
+	file := &File{Package: f.Name.Name, inputPath: inputFile, relPath: relPath}
 
 	// Add current package to imports for alias/path resolution and generation needs
 	if pkgPath := getCurrentPackagePath(inputFile); pkgPath != "" {
@@ -223,13 +147,6 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 
 	ast.Walk(file, f)
 
-	// If file-local config overrides OutPath, update output path accordingly
-	if file.Config != nil && file.Config.OutPath != "" {
-		outputDir = filepath.Join(file.Config.OutPath, filepath.Dir(relPath))
-		outFile, _ = filepath.Abs(filepath.Join(outputDir, outputName))
-		file.outputPath = outFile
-	}
-
 	// Store every processed file so configs in any file are discoverable
 	g.Files[file.inputPath] = file
 
@@ -239,36 +156,16 @@ func (g *Generator) processFile(inputFile, outPath, inputRoot string) error {
 	return nil
 }
 
-// shouldSkipFile checks if a file contains the generated code header and should be skipped
-func shouldSkipFile(filePath string) bool {
-	if !strings.HasSuffix(filePath, ".go") {
-		return true
-	}
-
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return false // If we can't read the file, don't skip it
-	}
-
-	// Convert to string and check for the generated code header
-	fileContent := string(content)
-
-	// Check for the exact generated code header
-	return strings.Contains(fileContent, "// Code generated by 'gorm.io/cmd/gorm'. DO NOT EDIT.")
-}
-
 type (
 	File struct {
-		Package    string
-		inputPath  string
-		outputPath string
-		relPath    string
-		outputName string
-		Imports    []Import
-		Interfaces []Interface
-		Structs    []Struct
-		Config     *genconfig.Config
-		gen        *Generator
+		Package           string
+		Imports           []Import
+		Interfaces        []Interface
+		Structs           []Struct
+		Config            *genconfig.Config
+		applicableConfigs []*genconfig.Config
+		inputPath         string
+		relPath           string
 	}
 	Import struct {
 		Name string
@@ -298,10 +195,12 @@ type (
 		Fields []Field
 	}
 	Field struct {
-		Name   string
-		DBName string
-		GoType string
-		file   *File
+		Name        string
+		DBName      string
+		GoType      string
+		GoTypeAlias string
+		Tag         string
+		file        *File
 	}
 )
 
@@ -439,13 +338,16 @@ var typeMap = map[string]string{
 // Type returns the field type string for template generation
 func (f Field) Type() string {
 	goType := strings.TrimPrefix(f.GoType, "*")
-	// Unified resolver: file-level first, then nearest package-level upwards
-	if f.file != nil && f.file.gen != nil {
-		if s := f.file.gen.resolveWrapperType(f.file.inputPath, f.DBName, f.Name, goType); s != "" {
-			return s
+	for _, cfg := range f.file.applicableConfigs {
+		if v, ok := cfg.FieldNameMap[f.GoTypeAlias]; ok {
+			return fmt.Sprint(v)
+		}
+
+		if v, ok := cfg.FieldTypeMap[f.GoType]; ok {
+			return fmt.Sprint(v)
 		}
 	}
-	// Built-in heuristics
+
 	if mapped, ok := typeMap[goType]; ok {
 		return mapped
 	}
@@ -453,29 +355,6 @@ func (f Field) Type() string {
 		return fmt.Sprintf("field.Number[%s]", goType)
 	}
 	return fmt.Sprintf("field.Field[%s]", goType)
-}
-
-// lookupWrapperByNameAndType applies name-based then type-based mapping from cfg.
-func lookupWrapperByNameAndType(cfg *genconfig.Config, dbName, fieldName, goType string) string {
-	if cfg == nil {
-		return ""
-	}
-	if v, ok := cfg.FieldNameMap[dbName]; ok {
-		if s := asWrapperTypeString(v); s != "" {
-			return s
-		}
-	}
-	if v, ok := cfg.FieldNameMap[fieldName]; ok {
-		if s := asWrapperTypeString(v); s != "" {
-			return s
-		}
-	}
-	if v, ok := cfg.FieldTypeMap[strings.TrimPrefix(goType, "*")]; ok {
-		if s := asWrapperTypeString(v); s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 // Value returns the field value string with column name for template generation
@@ -498,7 +377,6 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 			Path: importPath,
 		})
 	case *ast.GenDecl:
-		// Parse package-level vars to find embedded cmd.Config
 		if n.Tok == token.VAR {
 			for _, spec := range n.Specs {
 				if vs, ok := spec.(*ast.ValueSpec); ok {
@@ -554,11 +432,9 @@ func (p *File) tryParseConfig(vs *ast.ValueSpec) *genconfig.Config {
 	}
 	// Case 2: type is specified on the composite literal itself
 	for _, v := range vs.Values {
-		if cl, ok := v.(*ast.CompositeLit); ok {
-			if isCmdConfigType(cl.Type) {
-				if cfg := p.parseConfigLiteral(cl); cfg != nil {
-					return cfg
-				}
+		if cl, ok := v.(*ast.CompositeLit); ok && isCmdConfigType(cl.Type) {
+			if cfg := p.parseConfigLiteral(cl); cfg != nil {
+				return cfg
 			}
 		}
 	}
@@ -567,7 +443,7 @@ func (p *File) tryParseConfig(vs *ast.ValueSpec) *genconfig.Config {
 
 // parseConfigLiteral parses a cmd.Config composite literal into a Config value.
 func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
-	cfg := &genconfig.Config{}
+	cfg := &genconfig.Config{FieldTypeMap: map[any]any{}, FieldNameMap: map[string]any{}}
 	for _, elt := range cl.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
@@ -579,40 +455,29 @@ func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 		}
 		switch keyIdent.Name {
 		case "OutPath":
-			if bl, ok := kv.Value.(*ast.BasicLit); ok && bl.Kind == token.STRING {
-				if s, err := strconv.Unquote(bl.Value); err == nil {
-					cfg.OutPath = s
-				}
+			cfg.OutPath = strLit(kv.Value)
+		case "FileLevel":
+			if ident, ok := kv.Value.(*ast.Ident); ok {
+				cfg.FileLevel = ident.Name == "true"
 			}
-		case "FieldTypeMap":
+		case "FieldTypeMap", "FieldNameMap":
 			if m, ok := kv.Value.(*ast.CompositeLit); ok {
-				if cfg.FieldTypeMap == nil {
-					cfg.FieldTypeMap = map[any]any{}
-				}
 				for _, me := range m.Elts {
 					if pair, ok := me.(*ast.KeyValueExpr); ok {
-						// Extract key and value types from expressions
-						// Key is a source type instance literal, e.g. sql.NullTime{}
-						// Value is a wrapper type instance literal, e.g. field.Time{}
-						keyType := wrapperTypeFromExpr(pair.Key)
-						valType := wrapperTypeFromExpr(pair.Value)
-						if keyType != "" && valType != "" {
-							cfg.FieldTypeMap[keyType] = valType
-						}
-					}
-				}
-			}
-		case "FieldNameMap":
-			if m, ok := kv.Value.(*ast.CompositeLit); ok {
-				if cfg.FieldNameMap == nil {
-					cfg.FieldNameMap = map[string]any{}
-				}
-				for _, me := range m.Elts {
-					if pair, ok := me.(*ast.KeyValueExpr); ok {
-						k := strLit(pair.Key)
-						v := wrapperTypeFromExpr(pair.Value)
-						if k != "" && v != "" {
-							cfg.FieldNameMap[k] = v
+						// Values are wrapper type instances like JSON{} or field.Time{}
+						// Use the current file's package to qualify local identifiers
+						valType := p.parseFieldType(pair.Value, p.Package)
+						fmt.Println(valType)
+						if keyIdent.Name == "FieldNameMap" {
+							// Keys are strings for FieldNameMap
+							if key := strLit(pair.Key); key != "" && valType != "" {
+								cfg.FieldNameMap[key] = valType
+							}
+						} else {
+							// Keys are Go types for FieldTypeMap
+							if key := p.parseFieldType(pair.Key, ""); key != "" && valType != "" {
+								cfg.FieldTypeMap[key] = valType
+							}
 						}
 					}
 				}
@@ -620,19 +485,6 @@ func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 		}
 	}
 	return cfg
-}
-
-// strLit returns the unquoted string if expr is a string literal; otherwise "".
-func strLit(expr ast.Expr) string {
-	bl, ok := expr.(*ast.BasicLit)
-	if !ok || bl.Kind != token.STRING {
-		return ""
-	}
-	s, err := strconv.Unquote(bl.Value)
-	if err != nil {
-		return ""
-	}
-	return s
 }
 
 // processInterfaceType processes an interface type AST node and extracts interface metadata and methods
@@ -694,7 +546,7 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 		// Get field tag for DBName generation
 		var fieldTag string
 		if field.Tag != nil {
-			fieldTag = field.Tag.Value
+			fieldTag, _ = strconv.Unquote(field.Tag.Value)
 		}
 
 		// Only keep allowed fields; skip associations and unhandled complex types
@@ -706,93 +558,18 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 		for _, n := range field.Names {
 			dbName := generateDBName(n.Name, fieldTag)
 			f := Field{
-				Name:   n.Name,
-				DBName: dbName,
-				GoType: fieldType,
-				file:   p,
+				Name:        n.Name,
+				DBName:      dbName,
+				GoType:      fieldType,
+				GoTypeAlias: reflect.StructTag(fieldTag).Get("gen"),
+				Tag:         fieldTag,
+				file:        p,
 			}
 			s.Fields = append(s.Fields, f)
 		}
 	}
 
 	return s
-}
-
-// (mapping now happens lazily inside Field.Type())
-
-// wrapperTypeFromExpr extracts a wrapper type string (e.g. "field.Time", "field.Number[int]")
-// from various expression forms used in Config maps.
-func wrapperTypeFromExpr(expr ast.Expr) string {
-	// Allow string literal fallback for backward compatibility
-	if s := strLit(expr); s != "" {
-		return s
-	}
-
-	// Dereference address-of composite literals: &field.Time{}
-	if ue, ok := expr.(*ast.UnaryExpr); ok && ue.Op == token.AND {
-		if cl, ok := ue.X.(*ast.CompositeLit); ok {
-			return typeExprString(cl.Type)
-		}
-	}
-
-	// Handle composite literals: field.Time{}, field.Number[int]{}
-	if cl, ok := expr.(*ast.CompositeLit); ok {
-		return typeExprString(cl.Type)
-	}
-	// Handle selector or generic type expressions used directly (not typical, but tolerant)
-	return typeExprString(expr)
-}
-
-// typeExprString renders a type expression into a string (package-qualified where present).
-func typeExprString(expr ast.Expr) string {
-	switch t := expr.(type) {
-	case *ast.SelectorExpr:
-		left := typeExprString(t.X)
-		if left == "" {
-			return t.Sel.Name
-		}
-		return left + "." + t.Sel.Name
-	case *ast.Ident:
-		return t.Name
-	case *ast.IndexExpr:
-		base := typeExprString(t.X)
-		idx := typeExprString(t.Index)
-		if base == "" || idx == "" {
-			return ""
-		}
-		return base + "[" + idx + "]"
-	case *ast.IndexListExpr:
-		base := typeExprString(t.X)
-		if base == "" {
-			return ""
-		}
-		var parts []string
-		for _, e := range t.Indices {
-			s := typeExprString(e)
-			if s == "" {
-				return ""
-			}
-			parts = append(parts, s)
-		}
-		return base + "[" + strings.Join(parts, ", ") + "]"
-	case *ast.StarExpr:
-		// Strip pointer for wrapper type matching
-		return strings.TrimPrefix(typeExprString(t.X), "*")
-	case *ast.ArrayType:
-		return "[]" + typeExprString(t.Elt)
-	}
-	return ""
-}
-
-// asWrapperTypeString normalizes a stored config value to string.
-// Values are stored as strings by parseConfigLiteral, but this is tolerant.
-func asWrapperTypeString(v any) string {
-	switch s := v.(type) {
-	case string:
-		return s
-	default:
-		return ""
-	}
 }
 
 // isAssociationField determines whether a field should be treated as an association and skipped
@@ -838,6 +615,27 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
 		if pkgIdent, ok := t.X.(*ast.Ident); ok {
 			return pkgIdent.Name + "." + t.Sel.Name
 		}
+	case *ast.IndexExpr:
+		base := p.parseFieldType(t.X, pkgName)
+		idx := p.parseFieldType(t.Index, pkgName)
+		if base == "" || idx == "" {
+			return ""
+		}
+		return base + "[" + idx + "]"
+	case *ast.IndexListExpr:
+		base := p.parseFieldType(t.X, pkgName)
+		if base == "" {
+			return ""
+		}
+		var parts []string
+		for _, e := range t.Indices {
+			s := p.parseFieldType(e, pkgName)
+			if s == "" {
+				return ""
+			}
+			parts = append(parts, s)
+		}
+		return base + "[" + strings.Join(parts, ", ") + "]"
 	case *ast.StarExpr:
 		// Recursively handle pointer types
 		innerType := p.parseFieldType(t.X, pkgName)
@@ -846,6 +644,17 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
 		// Handle slice types like []byte
 		elementType := p.parseFieldType(t.Elt, pkgName)
 		return "[]" + elementType
+	case *ast.UnaryExpr:
+		// Dereference address-of composite literals: &Type{}
+		if t.Op == token.AND {
+			if cl, ok := t.X.(*ast.CompositeLit); ok {
+				return p.parseFieldType(cl.Type, pkgName)
+			}
+		}
+		return p.parseFieldType(t.X, pkgName)
+	case *ast.CompositeLit:
+		// Return the type string of the composite literal
+		return p.parseFieldType(t.Type, pkgName)
 	}
 	return "any"
 }
@@ -894,9 +703,6 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 
 	return false
 }
-
-// generateDBName generates database column name using GORM's NamingStrategy
-// generateDBName moved to utils.go for reuse
 
 // loadStructFromPackage loads a struct type definition from an external package by name
 func (p *File) loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {

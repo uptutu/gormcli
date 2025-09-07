@@ -29,7 +29,8 @@ type User struct {
 	Languages []Language `gorm:"many2many:UserSpeak"`
 	Friends   []*User    `gorm:"many2many:user_friends"`
 	Role      string
-	IsAdult   bool `gorm:"column:is_adult"`
+	IsAdult   bool   `gorm:"column:is_adult"`
+	Profile   string `gen:"json"`
 }
 
 type Account struct {

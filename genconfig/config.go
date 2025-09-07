@@ -37,8 +37,5 @@ type Config struct {
 	// FieldTypeMap. Name matches check DB column first, then struct field name.
 	FieldNameMap map[string]any
 
-	// Package indicates this config should apply to the entire Go package
-	// where it is declared. File-level configs (Package=false) only affect
-	// the file that declares them and take precedence over package-level config.
-	Package bool
+	FileLevel bool
 }
