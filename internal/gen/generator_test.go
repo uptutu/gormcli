@@ -23,9 +23,9 @@ func TestGeneratorWithQueryInterface(t *testing.T) {
 
 	outputDir := t.TempDir()
 
-	g := &Generator{Name: "examples"}
+	g := &Generator{Files: map[string]*File{}, outPath: outputDir}
 
-	if err := g.Process(inputPath, outputDir); err != nil {
+	if err := g.Process(inputPath); err != nil {
 		t.Fatalf("Process error: %v", err)
 	}
 	if err := g.Gen(); err != nil {
@@ -99,6 +99,7 @@ func TestProcessStructType(t *testing.T) {
 			{Name: "ManagerID", DBName: "manager_id", GoType: "*uint"},
 			{Name: "Role", DBName: "role", GoType: "string"},
 			{Name: "IsAdult", DBName: "is_adult", GoType: "bool"},
+			{Name: "Profile", DBName: "profile", GoType: "string", GoTypeAlias: "json"},
 		},
 	}
 
@@ -109,7 +110,12 @@ func TestProcessStructType(t *testing.T) {
 	}
 
 	result := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: "User"}}, structType, "")
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("Expected %+v, got %+v", expected, result)
+	// Only compare stable fields (Name, DBName, GoType); ignore tags/alias and internal pointers.
+	trimmed := Struct{Name: result.Name}
+	for _, f := range result.Fields {
+		trimmed.Fields = append(trimmed.Fields, Field{Name: f.Name, DBName: f.DBName, GoType: f.GoType, GoTypeAlias: f.GoTypeAlias})
+	}
+	if !reflect.DeepEqual(trimmed, expected) {
+		t.Errorf("Expected %+v, got %+v", expected, trimmed)
 	}
 }

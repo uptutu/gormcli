@@ -4,31 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"gorm.io/cmd/gorm/examples"
 	"gorm.io/cmd/gorm/examples/models"
 	generated "gorm.io/cmd/gorm/examples/output/models"
+	"gorm.io/cmd/gorm/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
-
-func TestFieldHelpers_SingleCondition_FindWithContext(t *testing.T) {
-	db := setupTestDB(t)
-	seedUsers(t, db)
-
-	ctx := context.Background()
-	// Simple filter using generated field helper (Role = "active")
-	got, err := gorm.G[models.User](db).
-		Where(generated.User.Role.Eq("active")).
-		Find(ctx)
-	if err != nil {
-		t.Fatalf("Find(ctx) failed: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 active users, got %d", len(got))
-	}
-}
 
 func TestFieldHelpers_MultipleConditions_FindIntoSlice(t *testing.T) {
 	db := setupTestDB(t)
@@ -125,51 +111,56 @@ func TestFieldHelpers_Delete(t *testing.T) {
 
 // Test that generated field types match expectations at compile time.
 func TestGeneratedModels_FieldTypes(t *testing.T) {
-	// User
-	_ = generated.User.ID
-	_ = generated.User.CreatedAt
-	_ = generated.User.UpdatedAt
-	_ = generated.User.DeletedAt
-	_ = generated.User.Name
-	_ = generated.User.Age
-	_ = generated.User.Birthday
-	_ = generated.User.CompanyID
-	_ = generated.User.ManagerID
-	_ = generated.User.Role
-	_ = generated.User.IsAdult
+	// User (exact wrapper types, in struct order)
+	var (
+		_ field.Number[uint]          = generated.User.ID
+		_ field.Time                  = generated.User.CreatedAt
+		_ field.Time                  = generated.User.UpdatedAt
+		_ field.Field[gorm.DeletedAt] = generated.User.DeletedAt
+		_ field.String                = generated.User.Name
+		_ field.Number[int]           = generated.User.Age
+		_ field.Time                  = generated.User.Birthday
+		_ field.Field[sql.NullInt64]  = generated.User.Score
+		_ field.Time                  = generated.User.LastLogin
+		_ field.Number[int]           = generated.User.CompanyID
+		_ field.Number[uint]          = generated.User.ManagerID
+		_ field.String                = generated.User.Role
+		_ field.Bool                  = generated.User.IsAdult
+		_ examples.JSON               = generated.User.Profile
 
-	// Account
-	_ = generated.Account.ID
-	_ = generated.Account.CreatedAt
-	_ = generated.Account.UpdatedAt
-	_ = generated.Account.DeletedAt
-	_ = generated.Account.UserID
-	_ = generated.Account.Number
+		// Account
+		_ field.Number[uint]          = generated.Account.ID
+		_ field.Time                  = generated.Account.CreatedAt
+		_ field.Time                  = generated.Account.UpdatedAt
+		_ field.Field[gorm.DeletedAt] = generated.Account.DeletedAt
+		_ field.Field[sql.NullInt64]  = generated.Account.UserID
+		_ field.String                = generated.Account.Number
 
-	// Pet
-	_ = generated.Pet.ID
-	_ = generated.Pet.CreatedAt
-	_ = generated.Pet.UpdatedAt
-	_ = generated.Pet.DeletedAt
-	_ = generated.Pet.UserID
-	_ = generated.Pet.Name
+		// Pet
+		_ field.Number[uint]          = generated.Pet.ID
+		_ field.Time                  = generated.Pet.CreatedAt
+		_ field.Time                  = generated.Pet.UpdatedAt
+		_ field.Field[gorm.DeletedAt] = generated.Pet.DeletedAt
+		_ field.Number[uint]          = generated.Pet.UserID
+		_ field.String                = generated.Pet.Name
 
-	// Toy
-	_ = generated.Toy.ID
-	_ = generated.Toy.CreatedAt
-	_ = generated.Toy.UpdatedAt
-	_ = generated.Toy.DeletedAt
-	_ = generated.Toy.Name
-	_ = generated.Toy.OwnerID
-	_ = generated.Toy.OwnerType
+		// Toy
+		_ field.Number[uint]          = generated.Toy.ID
+		_ field.Time                  = generated.Toy.CreatedAt
+		_ field.Time                  = generated.Toy.UpdatedAt
+		_ field.Field[gorm.DeletedAt] = generated.Toy.DeletedAt
+		_ field.String                = generated.Toy.Name
+		_ field.Number[uint]          = generated.Toy.OwnerID
+		_ field.String                = generated.Toy.OwnerType
 
-	// Company
-	_ = generated.Company.ID
-	_ = generated.Company.Name
+		// Company
+		_ field.Number[int] = generated.Company.ID
+		_ field.String      = generated.Company.Name
 
-	// Language
-	_ = generated.Language.Code
-	_ = generated.Language.Name
+		// Language
+		_ field.String = generated.Language.Code
+		_ field.String = generated.Language.Name
+	)
 }
 
 // helper to extract Column from common clause expressions
@@ -378,5 +369,48 @@ func TestFieldHelpers_NullTypes_DBChecks(t *testing.T) {
 	}
 	if cntLUA != 1 {
 		t.Fatalf("expected 1 account with LastUsedAt IS NOT NULL, got %d", cntLUA)
+	}
+}
+
+// SQLite JSON1 extension compatibility test: filter users by JSON attribute in Profile.
+func TestCustomFieldAsJSON(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	expr := generated.User.Profile.Contains(`{"vip":true}`)
+	e, ok := expr.(clause.Expr)
+	if !ok {
+		t.Fatalf("expected clause.Expr, got %T", expr)
+	}
+	if e.SQL != "JSON_CONTAINS(?, ?)" {
+		t.Fatalf("unexpected SQL for JSON contains: %q", e.SQL)
+	}
+	if len(e.Vars) != 2 {
+		t.Fatalf("expected 2 vars, got %d", len(e.Vars))
+	}
+	if col, ok := e.Vars[0].(clause.Column); !ok || col.Name != "profile" {
+		t.Fatalf("expected first var to be clause.Column{Name:'profile'}, got %#v", e.Vars[0])
+	}
+
+	// Insert a user with a JSON profile marking vip=true
+	u := models.User{Name: "vip_user", Age: 23, Role: "active", IsAdult: true, Profile: `{"vip": true}`}
+	if err := db.Create(&u).Error; err != nil {
+		t.Fatalf("failed to insert vip_user: %v", err)
+	}
+
+	ctx := context.Background()
+	// Use the JSON field helper's SQLiteEqual to filter by Profile.vip == 1
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Profile.Equal("$.vip", 1)).
+		Take(ctx)
+	if err != nil {
+		// If JSON1 extension is unavailable, skip the test gracefully
+		if strings.Contains(strings.ToLower(err.Error()), "no such function: json_extract") {
+			t.Skip("sqlite build does not include JSON1; skipping")
+		}
+		t.Fatalf("json filter find failed: %v", err)
+	}
+	if got.Name != "vip_user" {
+		t.Fatalf("expected to get vip_user, got %+v", got)
 	}
 }

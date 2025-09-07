@@ -2,7 +2,6 @@ package gen
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -16,10 +15,11 @@ func New() *cobra.Command {
 		Short: "Generate GORM query code from raw SQL interfaces",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			g := Generator{
-				Name: filepath.Base(output),
+				Files:   map[string]*File{},
+				outPath: output,
 			}
 
-			err := g.Process(input, output)
+			err := g.Process(input)
 			if err != nil {
 				return fmt.Errorf("error processing %s: %v", input, err)
 			}
@@ -33,7 +33,7 @@ func New() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&output, "output", "o", "./g", "Directory to place generated code")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "Directory to place generated code")
 	cmd.Flags().StringVarP(&input, "input", "i", "", "Path to Go interface file with raw SQL annotations")
 	cmd.MarkFlagRequired("input")
 
