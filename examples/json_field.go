@@ -9,12 +9,9 @@ import (
 
 // JSON is an example field wrapper for JSON columns.
 //
-// It demonstrates how to create a custom field type with only one
-// operation (Contains) and the required WithColumn method so it can be
+// It demonstrates how to create a custom field type with database-specific
+// SQL generation and the required WithColumn method so it can be
 // used in config mappings and query building.
-//
-// Note: The SQL generated here uses MySQL-style JSON_CONTAINS for
-// demonstration purposes. Adapt the SQL if you target a different DB.
 type JSON struct {
 	column clause.Column
 }
@@ -26,13 +23,7 @@ func (j JSON) WithColumn(name string) JSON {
 	return JSON{column: c}
 }
 
-// Contains creates a JSON containment predicate.
-// Example (MySQL): JSON_CONTAINS(column, @value)
-func (j JSON) Contains(value any) clause.Expression {
-	return clause.Expr{SQL: "JSON_CONTAINS(?, ?)", Vars: []any{j.column, value}}
-}
-
-// Equal builds an expression using SQLite's JSON1 extension to compare
+// Equal builds an expression using database-specific JSON functions to compare
 // the JSON value at the given JSON path with the provided value.
 // Example: json_extract(column, '$.vip') = 1
 // Path must be a valid JSON path like "$.vip".
@@ -50,33 +41,18 @@ func (e jsonEqualExpr) Build(builder clause.Builder) {
 	if stmt, ok := builder.(*gorm.Statement); ok {
 		switch stmt.Dialector.Name() {
 		case "mysql":
-			// Compare JSON to JSON using JSON_EXTRACT(column, path) = CAST(? AS JSON)
-			// This avoids dialect boolean quirks and works for all JSON scalars and null.
-			valJSON, _ := json.Marshal(e.val)
-			builder.WriteString("JSON_EXTRACT(")
-			builder.AddVar(builder, e.col)
-			builder.WriteString(", ")
-			builder.AddVar(builder, e.path)
-			builder.WriteString(") = CAST(")
-			builder.AddVar(builder, string(valJSON))
-			builder.WriteString(" AS JSON)")
+			v, _ := json.Marshal(e.val)
+			clause.Expr{SQL: "JSON_EXTRACT(?, ?) = CAST(? AS JSON)", Vars: []any{e.col, e.path, string(v)}}.Build(builder)
 		case "sqlite":
-			// SQLite: guard invalid JSON and compare scalar via json_extract
-			builder.WriteString("json_valid(")
-			builder.AddVar(builder, e.col)
-			builder.WriteString(") AND json_extract(")
-			builder.AddVar(builder, e.col)
-			builder.WriteString(", ")
-			builder.AddVar(builder, e.path)
-			builder.WriteString(") = ")
-			builder.AddVar(builder, e.val)
+			clause.Expr{SQL: "json_valid(?) AND json_extract(?, ?) = ?", Vars: []any{e.col, e.col, e.path, e.val}}.Build(builder)
 		default:
-			builder.WriteString("JSON_EXTRACT(")
-			builder.AddVar(builder, e.col)
-			builder.WriteString(", ")
-			builder.AddVar(builder, e.path)
-			builder.WriteString(") = ")
-			builder.AddVar(builder, e.val)
+			clause.Expr{SQL: "jsonb_extract_path_text(?, ?) = ?", Vars: []any{e.col, e.path[2:], e.val}}.Build(builder)
 		}
 	}
+}
+
+// Contains creates a JSON containment predicate.
+// Example (MySQL): JSON_CONTAINS(column, @value)
+func (j JSON) Contains(value any) clause.Expression {
+	return clause.Expr{SQL: "JSON_CONTAINS(?, ?)", Vars: []any{j.column, value}}
 }

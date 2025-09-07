@@ -16,7 +16,7 @@ package genconfig
 //	    // Keys are source Go type instances; values are wrapper type instances.
 //	    // e.g. sql.NullTime{} -> field.Time{}
 //	    FieldTypeMap: map[any]any{sql.NullTime{}: field.Time{}},
-//	    FieldNameMap: map[string]any{"last_login": field.Time{}},
+//	    FieldNameMap: map[string]any{"date": field.Time{}},
 //	}
 //
 // The generator will prioritize FieldNameMap over FieldTypeMap when deciding
@@ -33,8 +33,7 @@ type Config struct {
 	// `field.Time{}.WithColumn(...)`.
 	FieldTypeMap map[any]any
 
-	// FieldNameMap maps a field or column name to a typed instance, same as
-	// FieldTypeMap. Name matches check DB column first, then struct field name.
+	// FieldNameMap maps a gen tag name to a typed instance, same as FieldTypeMap.
 	FieldNameMap map[string]any
 
 	FileLevel bool

@@ -46,6 +46,7 @@ func Example(db *gorm.DB, ctx context.Context) {
 
 ---
 
+
 ## 🔎 API Overview
 
 ### Template-based Query Generation
@@ -231,4 +232,115 @@ SELECT * FROM @@table
     {{if tag != ""}} tags LIKE concat('%',@tag,'%') OR {{end}}
   {{end}}
 {{end}}
+```
+
+---
+
+## Generation Config
+
+Declare a package-level `genconfig.Config` in the package you want to generate for. The generator will pick it up automatically:
+
+```go
+package examples
+
+import (
+    "database/sql"
+    "gorm.io/cmd/gorm/field"
+    "gorm.io/cmd/gorm/genconfig"
+)
+
+var _ = genconfig.Config{
+    // Output directory for generated files in this package (overrides CLI -o)
+    OutPath: "examples/output",
+
+    // Map Go types to field helper types
+    FieldTypeMap: map[any]any{
+        sql.NullTime{}: field.Time{},
+    },
+
+    FieldNameMap: map[string]any{
+        "date": field.Time{},  // map fields with `gen:"date"` tag to Time field helper
+        "json": JSON{},        // map fields with `gen:"json"` tag to custom JSON helper
+    },
+
+    // If true, the config applies only to the current file rather than the entire package
+    FileLevel: false,
+}
+```
+
+### JSON Field Mapping Example
+
+0) Declare Configuration
+
+```go
+package examples
+
+import "gorm.io/cmd/gorm/genconfig"
+
+var _ = genconfig.Config{
+    OutPath: "examples/output",
+    FieldNameMap: map[string]any{
+        "json": JSON{},        // map fields with `gen:"json"` tag to custom JSON helper
+    },
+}
+```
+
+1) Declare JSON on the model using struct tags
+
+```go
+package models
+
+type User struct {
+    // ... other fields ...
+    // Tell the generator to use the custom JSON helper for this column
+    Profile string `gen:"json"`
+}
+```
+
+2) Define the JSON helper
+
+```go
+// JSON is a field helper for JSON columns that generates different SQL for different databases.
+type JSON struct{ column clause.Column }
+
+func (j JSON) WithColumn(name string) JSON {
+    c := j.column
+    c.Name = name
+    return JSON{column: c}
+}
+
+// Equal builds an expression using database-specific JSON functions to compare
+func (j JSON) Equal(path string, value any) clause.Expression {
+    return jsonEqualExpr{col: j.column, path: path, val: value}
+}
+
+type jsonEqualExpr struct {
+    col  clause.Column
+    path string
+    val  any
+}
+
+func (e jsonEqualExpr) Build(builder clause.Builder) {
+    if stmt, ok := builder.(*gorm.Statement); ok {
+        switch stmt.Dialector.Name() {
+        case "mysql":
+            v, _ := json.Marshal(e.val)
+            clause.Expr{SQL: "JSON_EXTRACT(?, ?) = CAST(? AS JSON)", Vars: []any{e.col, e.path, string(v)}}.Build(builder)
+        case "sqlite":
+            clause.Expr{SQL: "json_valid(?) AND json_extract(?, ?) = ?", Vars: []any{e.col, e.col, e.path, e.val}}.Build(builder)
+        default:
+            clause.Expr{SQL: "jsonb_extract_path_text(?, ?) = ?", Vars: []any{e.col, e.path[2:], e.val}}.Build(builder)
+        }
+    }
+}
+```
+
+3) Use it in queries
+
+```go
+// This will generate different SQL depending on the database:
+// MySQL:  "JSON_EXTRACT(`profile`, "$.vip") = CAST("true" AS JSON)"
+// SQLite: "json_valid(`profile`) AND json_extract(`profile`, "$.vip") = 1"
+got, err := gorm.G[models.User](db).
+    Where(generated.User.Profile.Equal("$.vip", true)).Take(ctx)
 ```
