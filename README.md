@@ -244,8 +244,8 @@ import (
 )
 
 var _ = genconfig.Config{
-    // Override CLI -o for files in this package
-    OutPath: "examples/output",
+  // Override CLI -o for files in this package
+  OutPath: "examples/output",
 
     // Map Go types to field helper types
     FieldTypeMap: map[any]any{
@@ -258,8 +258,21 @@ var _ = genconfig.Config{
         "json": JSON{},        // map fields with `gen:"json"` tag to custom JSON helper
     },
 
-    // When true, apply only to current file instead of the whole package
-    FileLevel: false,
+  // When true, apply only to current file instead of the whole package
+  FileLevel: false,
+
+  // Optional whitelists/blacklists (shell-style patterns):
+  // Whitelist takes priority: if Include* is non-empty, only those are generated,
+  // and Exclude* is ignored for that kind.
+  // Interfaces can be specified by pattern or by type-conversion form, e.g. models.Query(nil)
+  IncludeInterfaces: []any{"Query*", models.Query(nil)},
+  ExcludeInterfaces: []any{"*Deprecated*"},
+  // You can also specify struct types via type literal in the config file,
+  // e.g. models.User{} (treated as "models.User"), in addition to patterns.
+  // You can also specify struct types via type literal in the config file,
+  // e.g. models.User{} (treated as "models.User"), in addition to patterns.
+  IncludeStructs:    []any{"User", "Account*", models.User{}},
+  ExcludeStructs:    []any{"*DTO"},
 }
 ```
 

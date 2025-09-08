@@ -37,4 +37,27 @@ type Config struct {
 	FieldNameMap map[string]any
 
 	FileLevel bool
+
+	// IncludeInterfaces is an optional whitelist for interface types to process.
+	// If non-empty, only interfaces that match one of the provided selectors will be generated.
+	// Supported selectors:
+	//   - string patterns (shell-style), e.g. "Query*", "*Repo", "pkg.Query"
+	//   - type conversions, e.g. pkg.Query(nil)  // parsed as "pkg.Query"
+	IncludeInterfaces []any
+
+	// ExcludeInterfaces is an optional blacklist for interface types to skip.
+	// Applied after IncludeInterfaces filtering (if IncludeInterfaces is empty).
+	// Same selector rules as IncludeInterfaces.
+	ExcludeInterfaces []any
+
+	// IncludeStructs is an optional whitelist for struct types to process.
+	// If non-empty, only structs that match one of the provided selectors will be generated.
+	// Supported selectors:
+	//   - string patterns (shell-style), e.g. "User", "Account*", "models.User"
+	//   - type literals, e.g. models.User{}
+	IncludeStructs []any
+
+	// ExcludeStructs is an optional blacklist for struct types to skip.
+	// Applied after IncludeStructs filtering. Same selector rules as IncludeStructs.
+	ExcludeStructs []any
 }

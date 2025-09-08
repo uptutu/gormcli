@@ -3,6 +3,7 @@ package gen
 import (
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
@@ -62,10 +63,6 @@ func (g *Generator) Gen() error {
 	sort.Strings(fileCfgs)
 
 	for _, file := range g.Files {
-		if len(file.Interfaces) == 0 && len(file.Structs) == 0 {
-			continue
-		}
-
 		outPath := g.outPath
 		for i := len(fileCfgs) - 1; i >= 0; i-- {
 			prefix := fileCfgs[i]
@@ -80,6 +77,103 @@ func (g *Generator) Gen() error {
 				file.applicableConfigs = append(file.applicableConfigs, g.Files[fileCfgs[i]].Config)
 				mergeImports(&file.Imports, g.Files[fileCfgs[i]].Imports)
 			}
+		}
+		// Apply include/exclude filters from applicable configs before deciding to skip
+		if len(file.applicableConfigs) > 0 {
+			var incI, excI, incS, excS []string
+			for _, cfg := range file.applicableConfigs {
+				if cfg == nil {
+					continue
+				}
+				for _, v := range cfg.IncludeInterfaces {
+					incI = append(incI, fmt.Sprint(v))
+				}
+				for _, v := range cfg.ExcludeInterfaces {
+					excI = append(excI, fmt.Sprint(v))
+				}
+				for _, v := range cfg.IncludeStructs {
+					incS = append(incS, fmt.Sprint(v))
+				}
+				for _, v := range cfg.ExcludeStructs {
+					excS = append(excS, fmt.Sprint(v))
+				}
+			}
+
+			matchAny := func(name string, patterns []string) bool {
+				if len(patterns) == 0 {
+					return false
+				}
+				stripGeneric := func(s string) string {
+					if i := strings.Index(s, "["); i >= 0 {
+						return s[:i]
+					}
+					return s
+				}
+				name = stripGeneric(name)
+				for _, p := range patterns {
+					if p == "" {
+						continue
+					}
+					if ok, _ := filepath.Match(stripGeneric(p), name); ok {
+						return true
+					}
+				}
+				return false
+			}
+
+			matchAnyName := func(short, pkg string, patterns []string) bool {
+				if matchAny(short, patterns) {
+					return true
+				}
+				if pkg != "" && matchAny(pkg+"."+short, patterns) {
+					return true
+				}
+				return false
+			}
+
+			if len(incI) > 0 {
+				// Whitelist takes priority for interfaces: when set, only include matches,
+				// and ignore exclude list for interfaces.
+				filtered := []Interface{}
+				for _, it := range file.Interfaces {
+					if matchAnyName(it.Name, file.Package, incI) {
+						filtered = append(filtered, it)
+					}
+				}
+				file.Interfaces = filtered
+			} else if len(excI) > 0 {
+				filtered := []Interface{}
+				for _, it := range file.Interfaces {
+					if matchAnyName(it.Name, file.Package, excI) {
+						continue
+					}
+					filtered = append(filtered, it)
+				}
+				file.Interfaces = filtered
+			}
+
+			if len(incS) > 0 {
+				// Whitelist takes priority for structs as well.
+				filtered := []Struct{}
+				for _, st := range file.Structs {
+					if matchAnyName(st.Name, file.Package, incS) {
+						filtered = append(filtered, st)
+					}
+				}
+				file.Structs = filtered
+			} else if len(excS) > 0 {
+				filtered := []Struct{}
+				for _, st := range file.Structs {
+					if matchAnyName(st.Name, file.Package, excS) {
+						continue
+					}
+					filtered = append(filtered, st)
+				}
+				file.Structs = filtered
+			}
+		}
+		if len(file.Interfaces) == 0 && len(file.Structs) == 0 {
+			continue
 		}
 		if outPath == "" {
 			outPath = "./g"
@@ -105,9 +199,18 @@ func (g *Generator) Gen() error {
 			panic(fmt.Sprintf("failed to close file %v, got error %v", outPath, err))
 		}
 
-		if result, err := imports.Process(outPath, nil, nil); err == nil {
-			if err := os.WriteFile(outPath, result, 0o640); err != nil {
-				panic(fmt.Sprintf("failed to write file %v, got error %v", outPath, err))
+		// Always format generated code. Try goimports first; if it fails, fall back to go/format.
+		// Read current content
+		orig, rerr := os.ReadFile(outPath)
+		if rerr == nil {
+			if result, err := imports.Process(outPath, orig, nil); err == nil {
+				if werr := os.WriteFile(outPath, result, 0o640); werr != nil {
+					panic(fmt.Sprintf("failed to write file %v, got error %v", outPath, werr))
+				}
+			} else if fmted, ferr := format.Source(orig); ferr == nil {
+				if werr := os.WriteFile(outPath, fmted, 0o640); werr != nil {
+					panic(fmt.Sprintf("failed to write formatted file %v, got error %v", outPath, werr))
+				}
 			}
 		}
 	}
@@ -480,6 +583,109 @@ func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 							if key := p.parseFieldType(pair.Key, ""); key != "" && valType != "" {
 								cfg.FieldTypeMap[key] = valType
 							}
+						}
+					}
+				}
+			}
+		case "IncludeInterfaces":
+			if m, ok := kv.Value.(*ast.CompositeLit); ok {
+				for _, el := range m.Elts {
+					if s := strLit(el); s != "" {
+						// normalize generic instantiation in patterns like "pkg.I2[any]"
+						if i := strings.Index(s, "["); i >= 0 {
+							s = s[:i]
+						}
+						cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, s)
+						continue
+					}
+					switch ee := el.(type) {
+					case *ast.Ident, *ast.SelectorExpr:
+						t := p.parseFieldType(ee.(ast.Expr), p.Package)
+						if t != "" {
+							if i := strings.Index(t, "["); i >= 0 {
+								t = t[:i]
+							}
+							cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, t)
+						}
+					case *ast.CallExpr:
+						// Support type-conversion style: pkg.Interface(nil)
+						if t := p.parseFieldType(ee.Fun, p.Package); t != "" {
+							if i := strings.Index(t, "["); i >= 0 {
+								t = t[:i]
+							}
+							cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, t)
+						}
+					}
+				}
+			}
+		case "ExcludeInterfaces":
+			if m, ok := kv.Value.(*ast.CompositeLit); ok {
+				for _, el := range m.Elts {
+					if s := strLit(el); s != "" {
+						if i := strings.Index(s, "["); i >= 0 {
+							s = s[:i]
+						}
+						cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, s)
+						continue
+					}
+					switch ee := el.(type) {
+					case *ast.Ident, *ast.SelectorExpr:
+						t := p.parseFieldType(ee.(ast.Expr), p.Package)
+						if t != "" {
+							if i := strings.Index(t, "["); i >= 0 {
+								t = t[:i]
+							}
+							cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, t)
+						}
+					case *ast.CallExpr:
+						if t := p.parseFieldType(ee.Fun, p.Package); t != "" {
+							if i := strings.Index(t, "["); i >= 0 {
+								t = t[:i]
+							}
+							cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, t)
+						}
+					}
+				}
+			}
+		case "IncludeStructs":
+			if m, ok := kv.Value.(*ast.CompositeLit); ok {
+				for _, el := range m.Elts {
+					if s := strLit(el); s != "" {
+						cfg.IncludeStructs = append(cfg.IncludeStructs, s)
+						continue
+					}
+					// Support type literal like models.User{}
+					switch ee := el.(type) {
+					case *ast.CompositeLit:
+						t := p.parseFieldType(ee.Type, p.Package)
+						if t != "" {
+							cfg.IncludeStructs = append(cfg.IncludeStructs, t)
+						}
+					case *ast.Ident, *ast.SelectorExpr:
+						t := p.parseFieldType(ee.(ast.Expr), p.Package)
+						if t != "" {
+							cfg.IncludeStructs = append(cfg.IncludeStructs, t)
+						}
+					}
+				}
+			}
+		case "ExcludeStructs":
+			if m, ok := kv.Value.(*ast.CompositeLit); ok {
+				for _, el := range m.Elts {
+					if s := strLit(el); s != "" {
+						cfg.ExcludeStructs = append(cfg.ExcludeStructs, s)
+						continue
+					}
+					switch ee := el.(type) {
+					case *ast.CompositeLit:
+						t := p.parseFieldType(ee.Type, p.Package)
+						if t != "" {
+							cfg.ExcludeStructs = append(cfg.ExcludeStructs, t)
+						}
+					case *ast.Ident, *ast.SelectorExpr:
+						t := p.parseFieldType(ee.(ast.Expr), p.Package)
+						if t != "" {
+							cfg.ExcludeStructs = append(cfg.ExcludeStructs, t)
 						}
 					}
 				}
