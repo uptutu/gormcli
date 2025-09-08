@@ -20,7 +20,7 @@ func Query[T any](db *gorm.DB, opts ...clause.Expression) _QueryInterface[T] {
 }
 
 type _QueryInterface[T any] interface {
-	gorm.ChainInterface[T]
+	gorm.Interface[T]
 	GetByID(ctx context.Context, id int) (T, error)
 	FilterWithColumn(ctx context.Context, column string, value string) (T, error)
 	QueryWith(ctx context.Context, user models.User) (T, error)

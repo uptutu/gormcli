@@ -1,6 +1,7 @@
 package examples
 
 import (
+	"os"
 	"testing"
 
 	"gorm.io/cmd/gorm/examples/models"
@@ -20,6 +21,10 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	err = db.AutoMigrate(&models.User{}, &models.Account{}, &models.Pet{}, &models.Toy{}, &models.Company{}, &models.Language{})
 	if err != nil {
 		t.Fatalf("failed to migrate database: %v", err)
+	}
+
+	if os.Getenv("DEBUG") == "true" {
+		db = db.Debug()
 	}
 
 	return db

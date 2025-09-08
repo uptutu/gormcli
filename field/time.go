@@ -151,15 +151,15 @@ func (t Time) SetExpr(expr clause.Expression) clause.Assignment {
 // Time-specific functions
 
 // Add creates a date addition expression (DATE_ADD(field, INTERVAL seconds SECOND)).
-func (t Time) Add(duration time.Duration) clause.Expression {
+func (t Time) Add(duration time.Duration) AssignerExpression {
 	seconds := int64(duration.Seconds())
-	return clause.Expr{SQL: "DATE_ADD(?, INTERVAL ? SECOND)", Vars: []any{t.column, seconds}}
+	return colOpExpr{col: t.column, sql: "DATE_ADD(?, INTERVAL ? SECOND)", vars: []any{t.column, seconds}}
 }
 
 // Sub creates a date subtraction expression (DATE_SUB(field, INTERVAL seconds SECOND)).
-func (t Time) Sub(duration time.Duration) clause.Expression {
+func (t Time) Sub(duration time.Duration) AssignerExpression {
 	seconds := int64(duration.Seconds())
-	return clause.Expr{SQL: "DATE_SUB(?, INTERVAL ? SECOND)", Vars: []any{t.column, seconds}}
+	return colOpExpr{col: t.column, sql: "DATE_SUB(?, INTERVAL ? SECOND)", vars: []any{t.column, seconds}}
 }
 
 // DateDiff creates a date difference expression (DATEDIFF(field, date)).
@@ -218,8 +218,8 @@ func (t Time) Unix() clause.Expression {
 }
 
 // Now creates a NOW() expression for current timestamp.
-func (t Time) Now() clause.Expression {
-	return clause.Expr{SQL: "NOW()", Vars: nil}
+func (t Time) Now() AssignerExpression {
+	return colOpExpr{col: t.column, sql: "NOW()", vars: nil}
 }
 
 // Expr creates a custom SQL expression with parameters.

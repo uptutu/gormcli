@@ -66,6 +66,232 @@ func TestFieldHelpers_Update_UsingHelpers(t *testing.T) {
 	}
 }
 
+func TestFieldHelpers_Update_WithSetAssignments(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	ctx := context.Background()
+
+	// Use Set(assignments).Update(ctx) to flip all pending users to active
+	rows, err := gorm.G[models.User](db).
+		Where(generated.User.Role.Eq("pending")).
+		Set(
+			generated.User.Role.Set("active"),
+		).
+		Update(ctx)
+	if err != nil {
+		t.Fatalf("Set().Update(ctx) failed: %v", err)
+	}
+	if rows != 2 {
+		t.Fatalf("expected to update 2 rows, got %d", rows)
+	}
+
+	// Verify all users are now active (originally 2 active + 2 pending)
+	active, err := gorm.G[models.User](db).
+		Where(generated.User.Role.Eq("active")).
+		Count(ctx, "*")
+	if err != nil {
+		t.Fatalf("count active after Set().Update failed: %v", err)
+	}
+	if active != 4 {
+		t.Fatalf("expected 4 active users after update, got %d", active)
+	}
+}
+
+func TestFieldHelpers_Create_WithSetAssignments(t *testing.T) {
+	db := setupTestDB(t)
+
+	ctx := context.Background()
+
+	// Create a user using Set(assignments).Create(ctx)
+	if err := gorm.G[models.User](db).
+		Set(
+			generated.User.Name.Set("set_user"),
+			generated.User.Age.Set(29),
+			generated.User.Role.Set("active"),
+			generated.User.IsAdult.Set(true),
+			// also create with a nullable value set
+			generated.User.Score.Set(sql.NullInt64{Int64: 99, Valid: true}),
+		).
+		Create(ctx); err != nil {
+		t.Fatalf("Set().Create(ctx) failed: %v", err)
+	}
+
+	// Verify the new record was inserted with expected values
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("set_user")).
+		First(ctx)
+	if err != nil {
+		t.Fatalf("failed to load created user: %v", err)
+	}
+	if got.Name != "set_user" || got.Age != 29 || got.Role != "active" || !got.IsAdult || !got.Score.Valid || got.Score.Int64 != 99 {
+		t.Fatalf("unexpected created user values: %+v", got)
+	}
+}
+
+func TestFieldHelpers_Update_WithSetExpr(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	ctx := context.Background()
+
+	// Increment bob's age by 1 using SetExpr
+	rows, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("bob")).
+		Set(
+			generated.User.Age.SetExpr(clause.Expr{SQL: "age + ?", Vars: []any{1}}),
+		).
+		Update(ctx)
+	if err != nil {
+		t.Fatalf("SetExpr().Update failed: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("expected to update 1 row, got %d", rows)
+	}
+
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("bob")).
+		First(ctx)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if got.Age != 18 { // originally 17 in seed
+		t.Fatalf("expected bob age=18 after increment, got %d", got.Age)
+	}
+}
+
+func TestFieldHelpers_Update_Combined_ZeroAndExpr(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	ctx := context.Background()
+
+	// Combine zero-value updates and SQL expression in a single Set(...).Update(ctx)
+	rows, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("cathy")).
+		Set(
+			generated.User.Role.Set(""),                                             // zero string
+			generated.User.IsAdult.Set(false),                                       // zero bool
+			generated.User.Score.Set(sql.NullInt64{}),                               // NULL
+			generated.User.Age.SetExpr(clause.Expr{SQL: "age + ?", Vars: []any{2}}), // expr
+		).
+		Update(ctx)
+	if err != nil {
+		t.Fatalf("combined zero+expr update failed: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("expected to update 1 row, got %d", rows)
+	}
+
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("cathy")).
+		First(ctx)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if got.Role != "" || got.IsAdult != false || got.Age != 32 || got.Score.Valid {
+		t.Fatalf("unexpected values after combined update: %+v", got)
+	}
+}
+
+func TestFieldHelpers_Update_WithIncr(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	ctx := context.Background()
+
+	// Use Incr expression directly (GORM Set supports Assigner)
+	rows, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("bob")).
+		Set(
+			generated.User.Age.Incr(3),
+		).
+		Update(ctx)
+	if err != nil {
+		t.Fatalf("Set(Incr()).Update failed: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("expected to update 1 row, got %d", rows)
+	}
+
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("bob")).
+		First(ctx)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if got.Age != 20 { // originally 17 in seed
+		t.Fatalf("expected bob age=20 after Incr(3), got %d", got.Age)
+	}
+
+	_ = got
+}
+
+func TestFieldHelpers_Update_StringUpper_Assigner(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	ctx := context.Background()
+
+	rows, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("alice")).
+		Set(
+			generated.User.Name.Upper(),
+		).
+		Update(ctx)
+	if err != nil {
+		t.Fatalf("Set(Upper()).Update failed: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("expected to update 1 row, got %d", rows)
+	}
+
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("ALICE")).
+		First(ctx)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if got.Name != "ALICE" {
+		t.Fatalf("expected name ALICE, got %s", got.Name)
+	}
+}
+
+func TestFieldHelpers_Update_ZeroValues_WithSetAssignments(t *testing.T) {
+	db := setupTestDB(t)
+	seedUsers(t, db)
+
+	ctx := context.Background()
+
+	// Update a specific user to zero values explicitly
+	rows, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("alice")).
+		Set(
+			generated.User.Age.Set(0),                 // int zero
+			generated.User.IsAdult.Set(false),         // bool zero
+			generated.User.Role.Set(""),               // string zero
+			generated.User.Score.Set(sql.NullInt64{}), // NULL (zero value for NullInt64)
+		).
+		Update(ctx)
+	if err != nil {
+		t.Fatalf("Set().Update to zero values failed: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("expected to update 1 row, got %d", rows)
+	}
+
+	// Verify zero values persisted
+	got, err := gorm.G[models.User](db).
+		Where(generated.User.Name.Eq("alice")).
+		First(ctx)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if got.Age != 0 || got.IsAdult != false || got.Role != "" || got.Score.Valid {
+		t.Fatalf("expected zero values persisted, got: %+v", got)
+	}
+}
+
 func TestFieldHelpers_Count(t *testing.T) {
 	db := setupTestDB(t)
 	seedUsers(t, db)

@@ -112,11 +112,35 @@ func getCurrentPackagePath(filename string) string {
 	}
 
 	pkgs, err := packages.Load(cfg, filepath.Dir(filename))
-	if err != nil || len(pkgs) == 0 {
-		return ""
+	if err == nil && len(pkgs) > 0 && pkgs[0].PkgPath != "" {
+		return pkgs[0].PkgPath
 	}
 
-	return pkgs[0].PkgPath
+	// Fallback: derive import path from go.mod (module path + relative dir)
+	modRoot := findGoModDir(filename)
+	if modRoot == "" {
+		return ""
+	}
+	data, rerr := os.ReadFile(filepath.Join(modRoot, "go.mod"))
+	if rerr != nil {
+		return ""
+	}
+	var modulePath string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module "))
+			break
+		}
+	}
+	if modulePath == "" {
+		return ""
+	}
+	rel, rerr := filepath.Rel(modRoot, filepath.Dir(filename))
+	if rerr != nil || rel == "." {
+		return modulePath
+	}
+	return modulePath + "/" + filepath.ToSlash(rel)
 }
 
 // loadNamedType returns a named type from a package with basic caching.

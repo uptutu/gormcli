@@ -151,29 +151,33 @@ func (n Number[T]) SetExpr(expr clause.Expression) clause.Assignment {
 // Basic SQL expression functions for arithmetic operations
 
 // Incr creates an increment expression (field + value).
-func (n Number[T]) Incr(value T) clause.Expression {
-	return clause.Expr{SQL: "? + ?", Vars: []any{n.column, value}}
+func (n Number[T]) Incr(value T) AssignerExpression {
+	return colOpExpr{col: n.column, sql: "? + ?", vars: []any{n.column, value}}
 }
 
 // Decr creates a decrement expression (field - value).
-func (n Number[T]) Decr(value T) clause.Expression {
-	return clause.Expr{SQL: "? - ?", Vars: []any{n.column, value}}
+func (n Number[T]) Decr(value T) AssignerExpression {
+	return colOpExpr{col: n.column, sql: "? - ?", vars: []any{n.column, value}}
 }
 
 // Mul creates a multiplication expression (field * value).
-func (n Number[T]) Mul(value T) clause.Expression {
-	return clause.Expr{SQL: "? * ?", Vars: []any{n.column, value}}
+func (n Number[T]) Mul(value T) AssignerExpression {
+	return colOpExpr{col: n.column, sql: "? * ?", vars: []any{n.column, value}}
 }
 
 // Div creates a division expression (field / value).
-func (n Number[T]) Div(value T) clause.Expression {
-	return clause.Expr{SQL: "? / ?", Vars: []any{n.column, value}}
+func (n Number[T]) Div(value T) AssignerExpression {
+	return colOpExpr{col: n.column, sql: "? / ?", vars: []any{n.column, value}}
 }
 
 // Expr creates a custom SQL expression with parameters.
 func (n Number[T]) Expr(expr string, values ...any) clause.Expression {
 	return clause.Expr{SQL: expr, Vars: values}
 }
+
+// numOpExpr is an internal expression that both renders an arithmetic op and carries
+// its column so it can be adapted to an assignment by helper functions.
+// removed numOpExpr in favor of generic colOpExpr
 
 // Order expressions for sorting operations
 

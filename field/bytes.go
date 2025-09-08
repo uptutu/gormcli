@@ -106,13 +106,8 @@ func (b Bytes) Length() clause.Expression {
 }
 
 // Concat creates a binary concatenation expression (CONCAT(field, value)).
-func (b Bytes) Concat(value []byte) clause.Expression {
-	return clause.Expr{SQL: "CONCAT(?, ?)", Vars: []any{b.column, value}}
-}
-
-// ConcatExpr creates a binary concatenation expression with another expression.
-func (b Bytes) ConcatExpr(expr clause.Expression) clause.Expression {
-	return clause.Expr{SQL: "CONCAT(?, ?)", Vars: []any{b.column, expr}}
+func (b Bytes) Concat(value []byte) AssignerExpression {
+	return colOpExpr{col: b.column, sql: "CONCAT(?, ?)", vars: []any{b.column, value}}
 }
 
 // Expr creates a custom SQL expression with parameters.

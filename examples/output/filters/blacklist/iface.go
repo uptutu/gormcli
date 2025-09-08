@@ -17,7 +17,7 @@ func I1[T any](db *gorm.DB, opts ...clause.Expression) _I1Interface[T] {
 }
 
 type _I1Interface[T any] interface {
-	gorm.ChainInterface[T]
+	gorm.Interface[T]
 	ByID(ctx context.Context, id int) (T, error)
 }
 
@@ -44,7 +44,7 @@ func I2[T any](db *gorm.DB, opts ...clause.Expression) _I2Interface[T] {
 }
 
 type _I2Interface[T any] interface {
-	gorm.ChainInterface[T]
+	gorm.Interface[T]
 	ByName(ctx context.Context, name string) (T, error)
 }
 

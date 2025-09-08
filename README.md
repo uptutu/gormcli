@@ -163,10 +163,34 @@ gorm.G[User](db).
     Where(generated.User.Age.Gt(18), generated.User.Status.Eq("active")).
     Find(&users)
 
-// Update using helpers
+// Update using query helpers
 gorm.G[User](db).
     Where(generated.User.Status.Eq("pending")).
     Update("status", "active")
+
+// Update with Set: zero values + expressions (Assigner and SetExpr)
+gorm.G[User](db).
+    Where(generated.User.Name.Eq("alice")).
+    Set(
+        generated.User.Name.Set("jinzhu"),         // name = "jinzhu"
+        generated.User.IsAdult.Set(false),         // is_adult = false (zero value)
+        generated.User.Score.Set(sql.NullInt64{}), // score = NULL (zero value)
+        generated.User.Age.Incr(1),                // age = age + 1
+        generated.User.Age.SetExpr(                // age = GREATEST(age, 18)
+            clause.Expr{SQL: "GREATEST(?, ?)", Vars: []any{clause.Column{Name: "age"}, 18}},
+        ),
+    ).
+    Update(ctx)
+
+// Create with Set
+gorm.G[User](db).
+    Set(
+        generated.User.Name.Set("alice"),  // name = "alice"
+        generated.User.Age.Set(0),         // age = 0
+        generated.User.IsAdult.Set(false), // is_adult = false
+        generated.User.Role.Set("active"), // role = "active"
+    ).
+    Create(ctx)
 ```
 
 ---

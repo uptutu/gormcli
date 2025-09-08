@@ -22,7 +22,7 @@ func {{.Name}}[T any](db *gorm.DB, opts ...clause.Expression) {{$IfaceName}}Inte
 }
 
 type {{$IfaceName}}Interface[T any] interface {
-	gorm.ChainInterface[T]
+	gorm.Interface[T]
 	{{range .Methods -}}
 	{{.Name}}({{.ParamsString}}) ({{.ResultString}})
 	{{end}}

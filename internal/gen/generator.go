@@ -129,6 +129,12 @@ func (g *Generator) Gen() error {
 					break
 				}
 			}
+			// Fallback to resolving via packages
+			if filePkgPath == "" {
+				if mp := getCurrentPackagePath(file.inputPath); mp != "" {
+					filePkgPath = mp
+				}
+			}
 
 			matchAnyName := func(short, pkg string, patterns []string) bool {
 				if matchAny(short, patterns) {
