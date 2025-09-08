@@ -18,6 +18,7 @@ var _ = genconfig.Config{
 		"date": field.Time{},
 		"json": JSON{},
 	},
+	IncludeStructs: []any{},
 }
 
 type Query[T any] interface {

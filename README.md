@@ -254,12 +254,24 @@ var _ = genconfig.Config{
 
     // Map `gen:"name"` names to helper types
     FieldNameMap: map[string]any{
-        "date": field.Time{},  // map fields with `gen:"date"` tag to Time field helper
-        "json": JSON{},        // map fields with `gen:"json"` tag to custom JSON helper
+        "date": field.Time{}, // map fields with `gen:"date"` tag to Time field helper
+        "json": JSON{},       // map fields with `gen:"json"` tag to custom JSON helper
     },
 
     // When true, apply only to current file instead of the whole package
     FileLevel: false,
+
+    // Optional whitelists/blacklists (shell-style patterns):
+    // Whitelist takes priority: if Include* is non-empty, only those are generated,
+    // and Exclude* is ignored for that kind.
+    // Interfaces can be specified by pattern or by type-conversion form, e.g. models.Query(nil)
+    IncludeInterfaces: []any{"Query*", models.Query(nil)},
+    ExcludeInterfaces: []any{"*Deprecated*"},
+
+    // You can also specify struct types via type literal in the config file,
+    // e.g. models.User{} (treated as "models.User"), in addition to patterns.
+    IncludeStructs: []any{"User", "Account*", models.User{}},
+    ExcludeStructs: []any{"*DTO"},
 }
 ```
 
