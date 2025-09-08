@@ -157,28 +157,28 @@ func TestFilters_TwoLevel(t *testing.T) {
 }
 
 func TestFilters_PatternInclude(t *testing.T) {
-    inputDir, err := filepath.Abs("../../examples/filters/pattern")
-    if err != nil {
-        t.Fatal(err)
-    }
-    out := t.TempDir()
+	inputDir, err := filepath.Abs("../../examples/filters/pattern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
 
-    g := &Generator{Files: map[string]*File{}, outPath: out}
-    if err := g.Process(inputDir); err != nil {
-        t.Fatalf("Process: %v", err)
-    }
-    if err := g.Gen(); err != nil {
-        t.Fatalf("Gen: %v", err)
-    }
+	g := &Generator{Files: map[string]*File{}, outPath: out}
+	if err := g.Process(inputDir); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if err := g.Gen(); err != nil {
+		t.Fatalf("Gen: %v", err)
+	}
 
-    // All output .go files in out
-    content := readAllGeneratedGoFiles(t, out)
+	// All output .go files in out
+	content := readAllGeneratedGoFiles(t, out)
 
-    // Should include only Query* interfaces (QueryUser, QueryOrder)
-    if !strings.Contains(content, "func QueryUser[") || !strings.Contains(content, "func QueryOrder[") {
-        t.Fatalf("expected QueryUser and QueryOrder to be generated")
-    }
-    if strings.Contains(content, "func Service[") {
-        t.Fatalf("Service should be excluded by IncludeInterfaces pattern Query*")
-    }
+	// Should include only Query* interfaces (QueryUser, QueryOrder)
+	if !strings.Contains(content, "func QueryUser[") || !strings.Contains(content, "func QueryOrder[") {
+		t.Fatalf("expected QueryUser and QueryOrder to be generated")
+	}
+	if strings.Contains(content, "func Service[") {
+		t.Fatalf("Service should be excluded by IncludeInterfaces pattern Query*")
+	}
 }

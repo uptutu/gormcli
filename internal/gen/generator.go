@@ -121,11 +121,23 @@ func (g *Generator) Gen() error {
 				return false
 			}
 
+			// Determine full import path of this file's package for fully-qualified matches
+			var filePkgPath string
+			for _, im := range file.Imports {
+				if im.Name == file.Package {
+					filePkgPath = im.Path
+					break
+				}
+			}
+
 			matchAnyName := func(short, pkg string, patterns []string) bool {
 				if matchAny(short, patterns) {
 					return true
 				}
 				if pkg != "" && matchAny(pkg+"."+short, patterns) {
+					return true
+				}
+				if filePkgPath != "" && matchAny(filePkgPath+"."+short, patterns) {
 					return true
 				}
 				return false
@@ -550,6 +562,59 @@ func (p *File) tryParseConfig(vs *ast.ValueSpec) *genconfig.Config {
 // parseConfigLiteral parses a cmd.Config composite literal into a Config value.
 func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 	cfg := &genconfig.Config{FieldTypeMap: map[any]any{}, FieldNameMap: map[string]any{}}
+	// Build alias -> full import path map for qualifying patterns
+	aliasToPath := map[string]string{}
+	for _, im := range p.Imports {
+		aliasToPath[im.Name] = im.Path
+	}
+	qualify := func(s string) string {
+		if s == "" {
+			return s
+		}
+		if i := strings.Index(s, "["); i >= 0 {
+			s = s[:i]
+		}
+		if idx := strings.Index(s, "."); idx > 0 {
+			alias := s[:idx]
+			rest := s[idx+1:]
+			if path := aliasToPath[alias]; path != "" {
+				return path + "." + rest
+			}
+		}
+		return s
+	}
+	// Helper to collect filter values from a composite literal list (e.g., []any{...})
+	collect := func(val ast.Expr, allowStructLiteral bool) []any {
+		out := []any{}
+		m, ok := val.(*ast.CompositeLit)
+		if !ok {
+			return out
+		}
+		for _, el := range m.Elts {
+			if s := strLit(el); s != "" {
+				out = append(out, qualify(s))
+				continue
+			}
+			switch ee := el.(type) {
+			case *ast.CompositeLit:
+				if allowStructLiteral {
+					if t := p.parseFieldType(ee.Type, p.Package); t != "" {
+						out = append(out, qualify(t))
+					}
+				}
+			case *ast.Ident, *ast.SelectorExpr:
+				if t := p.parseFieldType(ee.(ast.Expr), p.Package); t != "" {
+					out = append(out, qualify(t))
+				}
+			case *ast.CallExpr:
+				if t := p.parseFieldType(ee.Fun, p.Package); t != "" {
+					out = append(out, qualify(t))
+				}
+			}
+		}
+		return out
+	}
+
 	for _, elt := range cl.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
@@ -588,108 +653,13 @@ func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 				}
 			}
 		case "IncludeInterfaces":
-			if m, ok := kv.Value.(*ast.CompositeLit); ok {
-				for _, el := range m.Elts {
-					if s := strLit(el); s != "" {
-						// normalize generic instantiation in patterns like "pkg.I2[any]"
-						if i := strings.Index(s, "["); i >= 0 {
-							s = s[:i]
-						}
-						cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, s)
-						continue
-					}
-					switch ee := el.(type) {
-					case *ast.Ident, *ast.SelectorExpr:
-						t := p.parseFieldType(ee.(ast.Expr), p.Package)
-						if t != "" {
-							if i := strings.Index(t, "["); i >= 0 {
-								t = t[:i]
-							}
-							cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, t)
-						}
-					case *ast.CallExpr:
-						// Support type-conversion style: pkg.Interface(nil)
-						if t := p.parseFieldType(ee.Fun, p.Package); t != "" {
-							if i := strings.Index(t, "["); i >= 0 {
-								t = t[:i]
-							}
-							cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, t)
-						}
-					}
-				}
-			}
+			cfg.IncludeInterfaces = append(cfg.IncludeInterfaces, collect(kv.Value, false)...)
 		case "ExcludeInterfaces":
-			if m, ok := kv.Value.(*ast.CompositeLit); ok {
-				for _, el := range m.Elts {
-					if s := strLit(el); s != "" {
-						if i := strings.Index(s, "["); i >= 0 {
-							s = s[:i]
-						}
-						cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, s)
-						continue
-					}
-					switch ee := el.(type) {
-					case *ast.Ident, *ast.SelectorExpr:
-						t := p.parseFieldType(ee.(ast.Expr), p.Package)
-						if t != "" {
-							if i := strings.Index(t, "["); i >= 0 {
-								t = t[:i]
-							}
-							cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, t)
-						}
-					case *ast.CallExpr:
-						if t := p.parseFieldType(ee.Fun, p.Package); t != "" {
-							if i := strings.Index(t, "["); i >= 0 {
-								t = t[:i]
-							}
-							cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, t)
-						}
-					}
-				}
-			}
+			cfg.ExcludeInterfaces = append(cfg.ExcludeInterfaces, collect(kv.Value, false)...)
 		case "IncludeStructs":
-			if m, ok := kv.Value.(*ast.CompositeLit); ok {
-				for _, el := range m.Elts {
-					if s := strLit(el); s != "" {
-						cfg.IncludeStructs = append(cfg.IncludeStructs, s)
-						continue
-					}
-					// Support type literal like models.User{}
-					switch ee := el.(type) {
-					case *ast.CompositeLit:
-						t := p.parseFieldType(ee.Type, p.Package)
-						if t != "" {
-							cfg.IncludeStructs = append(cfg.IncludeStructs, t)
-						}
-					case *ast.Ident, *ast.SelectorExpr:
-						t := p.parseFieldType(ee.(ast.Expr), p.Package)
-						if t != "" {
-							cfg.IncludeStructs = append(cfg.IncludeStructs, t)
-						}
-					}
-				}
-			}
+			cfg.IncludeStructs = append(cfg.IncludeStructs, collect(kv.Value, true)...)
 		case "ExcludeStructs":
-			if m, ok := kv.Value.(*ast.CompositeLit); ok {
-				for _, el := range m.Elts {
-					if s := strLit(el); s != "" {
-						cfg.ExcludeStructs = append(cfg.ExcludeStructs, s)
-						continue
-					}
-					switch ee := el.(type) {
-					case *ast.CompositeLit:
-						t := p.parseFieldType(ee.Type, p.Package)
-						if t != "" {
-							cfg.ExcludeStructs = append(cfg.ExcludeStructs, t)
-						}
-					case *ast.Ident, *ast.SelectorExpr:
-						t := p.parseFieldType(ee.(ast.Expr), p.Package)
-						if t != "" {
-							cfg.ExcludeStructs = append(cfg.ExcludeStructs, t)
-						}
-					}
-				}
-			}
+			cfg.ExcludeStructs = append(cfg.ExcludeStructs, collect(kv.Value, true)...)
 		}
 	}
 	return cfg

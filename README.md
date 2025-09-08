@@ -269,8 +269,6 @@ var _ = genconfig.Config{
   ExcludeInterfaces: []any{"*Deprecated*"},
   // You can also specify struct types via type literal in the config file,
   // e.g. models.User{} (treated as "models.User"), in addition to patterns.
-  // You can also specify struct types via type literal in the config file,
-  // e.g. models.User{} (treated as "models.User"), in addition to patterns.
   IncludeStructs:    []any{"User", "Account*", models.User{}},
   ExcludeStructs:    []any{"*DTO"},
 }
