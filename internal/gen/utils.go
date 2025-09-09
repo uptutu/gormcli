@@ -173,42 +173,6 @@ func generateDBName(fieldName, gormTag string) string {
 	return ns.ColumnName("", fieldName)
 }
 
-// AllowedFieldByType returns true if the field type should be treated as a simple, allowed column type.
-// Rules:
-// - Primitive numbers, bool, string
-// - time.Time, []byte
-// - Any named type that implements one of the allowed interfaces
-func AllowedFieldByType(expr ast.Expr, pkgAlias string, imports []Import, filePath string) bool {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		name := t.Name
-		if name == "string" || name == "bool" || strings.Contains(name, "int") || strings.Contains(name, "float") {
-			return true
-		}
-	case *ast.SelectorExpr:
-		// time.Time
-		if id, ok := t.X.(*ast.Ident); ok && id.Name == "time" && t.Sel.Name == "Time" {
-			return true
-		}
-	case *ast.ArrayType:
-		// []byte
-		if id, ok := t.Elt.(*ast.Ident); ok && id.Name == "byte" {
-			return true
-		}
-	case *ast.StarExpr:
-		// Handle pointer by examining the element
-		if AllowedFieldByType(t.X, pkgAlias, imports, filePath) {
-			return true
-		}
-	}
-
-	// Fallback to interface-based checks
-	if typ := ResolveTypeFromExpr(expr, imports, filePath, pkgAlias); typ != nil {
-		return ImplementsAllowedInterfaces(typ)
-	}
-	return false
-}
-
 // mergeImports appends imports from src into dst if not already present (by Path)
 func mergeImports(dst *[]Import, src []Import) {
 	existing := map[string]bool{}
@@ -246,6 +210,7 @@ func shouldSkipFile(filePath string) bool {
 // - Supports identifiers from the current package (exported)
 // - Ignores basic built-in types (lowercase idents)
 // - Follows one level of pointers
+// - Supports both ast.Expr and string inputs
 func ResolveTypeFromExpr(expr ast.Expr, imports []Import, filePath string, preferAlias string) types.Type {
 	aliasToPath := map[string]string{}
 	for _, i := range imports {
@@ -277,6 +242,7 @@ func ResolveTypeFromExpr(expr ast.Expr, imports []Import, filePath string, prefe
 			}
 		}
 	case *ast.StarExpr:
+		// For pointer types, examine the element
 		return ResolveTypeFromExpr(t.X, imports, filePath, preferAlias)
 	}
 	return nil

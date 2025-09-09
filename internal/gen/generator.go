@@ -325,6 +325,7 @@ type (
 		GoTypeAlias string
 		Tag         string
 		file        *File
+		field       *ast.Field
 	}
 )
 
@@ -461,7 +462,7 @@ var typeMap = map[string]string{
 
 // Type returns the field type string for template generation
 func (f Field) Type() string {
-	goType := strings.TrimPrefix(f.GoType, "*")
+	// Check FieldTypeMap and FieldNameMap from configs first
 	for _, cfg := range f.file.applicableConfigs {
 		if v, ok := cfg.FieldNameMap[f.GoTypeAlias]; ok {
 			return fmt.Sprint(v)
@@ -472,18 +473,52 @@ func (f Field) Type() string {
 		}
 	}
 
+	// Check if type implements allowed interfaces
+	goType := strings.TrimPrefix(f.GoType, "*")
+	if typ := ResolveTypeFromExpr(f.field.Type, f.file.Imports, f.file.inputPath, f.file.Package); typ != nil {
+		if ImplementsAllowedInterfaces(typ) {
+			// For interface-implementing types, use generic Field
+			return fmt.Sprintf("field.Field[%s]", goType)
+		}
+	}
+
+	// Handle regular field types
 	if mapped, ok := typeMap[goType]; ok {
 		return mapped
 	}
 	if strings.Contains(goType, "int") || strings.Contains(goType, "float") {
 		return fmt.Sprintf("field.Number[%s]", goType)
 	}
+
+	// Check if this is a relation field based on its type
+	// If it's a struct type or slice type, treat it as a relation field
+	if strings.HasPrefix(goType, "[]") {
+		// Slice type - use field.Slice[T]
+		elementType := strings.TrimPrefix(goType, "[]")
+		return fmt.Sprintf("field.Slice[%s]", elementType)
+	} else if strings.Contains(goType, ".") {
+		// Struct type from another package - use field.Struct[T]
+		return fmt.Sprintf("field.Struct[%s]", goType)
+	}
+
 	return fmt.Sprintf("field.Field[%s]", goType)
 }
 
 // Value returns the field value string with column name for template generation
 func (f Field) Value() string {
-	return f.Type() + fmt.Sprintf("{}.WithColumn(%q)", f.DBName)
+	fieldType := f.Type()
+
+	// Check if this is a relation field based on the type
+	if strings.HasPrefix(fieldType, "field.Struct[") {
+		// Struct relation field
+		return fmt.Sprintf("%s{}.WithName(%q)", fieldType, f.Name)
+	} else if strings.HasPrefix(fieldType, "field.Slice[") {
+		// Slice relation field
+		return fmt.Sprintf("%s{}.WithName(%q)", fieldType, f.Name)
+	}
+
+	// Regular field
+	return fmt.Sprintf("%s{}.WithColumn(%q)", fieldType, f.DBName)
 }
 
 // Visit implements ast.Visitor to traverse AST nodes and extract imports, interfaces, and structs
@@ -733,12 +768,8 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 			fieldTag, _ = strconv.Unquote(field.Tag.Value)
 		}
 
-		// Only keep allowed fields; skip associations and unhandled complex types
-		if !p.isAllowedField(field, pkgName) {
-			continue
-		}
-
-		// Add fields to struct
+		// Add fields to struct (both regular fields and relation fields)
+		// The Type() method will determine how to handle each field
 		for _, n := range field.Names {
 			if n.IsExported() {
 				dbName := generateDBName(n.Name, fieldTag)
@@ -749,6 +780,7 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 					GoTypeAlias: reflect.StructTag(fieldTag).Get("gen"),
 					Tag:         fieldTag,
 					file:        p,
+					field:       field,
 				}
 				s.Fields = append(s.Fields, f)
 			}
@@ -756,13 +788,6 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 	}
 
 	return s
-}
-
-// isAssociationField determines whether a field should be treated as an association and skipped
-// Keep primitives, time.Time, []byte, gorm.DeletedAt, and any type implementing
-// one of: database/sql.Scanner, database/sql/driver.Valuer, gorm.Valuer, schema.SerializerInterface.
-func (p *File) isAllowedField(field *ast.Field, pkgName string) bool {
-	return AllowedFieldByType(field.Type, pkgName, p.Imports, p.inputPath)
 }
 
 // parseFieldType extracts the type string from an AST field type expression

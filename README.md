@@ -203,6 +203,8 @@ Helpers are generated only for “column‑like” fields; associations are skip
   - `gorm.io/gorm.Valuer`, `gorm.io/gorm/schema.SerializerInterface`
 - Excluded: `has one`, `has many`, `belongs to`, `many2many`, and embedded slices/structs that represent relations
 
+For a more comprehensive example of model relations, see [examples/models/user.go](examples/models/user.go).
+
 ---
 
 ## 📝 Template DSL
