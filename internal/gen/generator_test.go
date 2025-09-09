@@ -17,6 +17,14 @@ func TestParseTemplate(t *testing.T) {
 	}
 }
 
+func TestLoadNamedTypes(t *testing.T) {
+	for _, i := range allowedInterfaces {
+		if i == nil {
+			t.Fatalf("failed to load named type, got nil")
+		}
+	}
+}
+
 func TestGeneratorWithQueryInterface(t *testing.T) {
 	inputPath, err := filepath.Abs("../../examples/query.go")
 	if err != nil {

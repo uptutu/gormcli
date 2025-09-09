@@ -16,7 +16,6 @@ import (
 	"text/template"
 	"unicode"
 
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
 	"gorm.io/cmd/gorm/genconfig"
 )
@@ -68,7 +67,7 @@ type (
 		Name        string
 		DBName      string
 		GoType      string
-		GoTypeAlias string
+		NamedGoType string
 		Tag         string
 		file        *File
 		field       *ast.Field
@@ -231,7 +230,7 @@ func (g *Generator) processFile(inputFile, inputRoot string) error {
 	if pkgPath := getCurrentPackagePath(inputFile); pkgPath != "" {
 		file.PackagePath = pkgPath
 		file.Imports = append(file.Imports, Import{
-			Name: f.Name.Name,
+			Name: file.Package,
 			Path: pkgPath,
 		})
 	}
@@ -359,7 +358,7 @@ func (p *File) parseFieldList(fields *ast.FieldList) []Param {
 		for _, n := range names {
 			params = append(params, Param{
 				Name: n.Name,
-				Type: p.parseFieldType(field.Type, ""),
+				Type: p.parseFieldType(field.Type, "", false),
 			})
 		}
 	}
@@ -378,7 +377,7 @@ var typeMap = map[string]string{
 func (f Field) Type() string {
 	// Check FieldTypeMap and FieldNameMap from configs first
 	for _, cfg := range f.file.applicableConfigs {
-		if v, ok := cfg.FieldNameMap[f.GoTypeAlias]; ok {
+		if v, ok := cfg.FieldNameMap[f.NamedGoType]; ok {
 			return fmt.Sprint(v)
 		}
 
@@ -388,8 +387,18 @@ func (f Field) Type() string {
 	}
 
 	// Check if type implements allowed interfaces
-	goType := strings.TrimPrefix(f.GoType, "*")
-	if typ := ResolveTypeFromExpr(f.field.Type, f.file.Imports, f.file.inputPath, f.file.Package); typ != nil {
+	var (
+		goType = strings.TrimPrefix(f.GoType, "*")
+		pkg    = f.file.Package
+		typ    = goType
+		ts     = strings.Split(goType, ".")
+	)
+
+	if len(ts) > 1 {
+		pkg, typ = ts[0], ts[1]
+	}
+
+	if typ := loadNamedType(findGoModDir(f.file.inputPath), p.getFullImportPath(pkg), typ); typ != nil {
 		if ImplementsAllowedInterfaces(typ) { // For interface-implementing types, use generic Field
 			return fmt.Sprintf("field.Field[%s]", goType)
 		}
@@ -471,36 +480,10 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 // tryParseConfig attempts to parse a gorm.io/cmd/gorm/genconfig.Config composite literal
 // from a package-level value spec. Returns nil if not present.
 func (p *File) tryParseConfig(vs *ast.ValueSpec) *genconfig.Config {
-	// Helper to check whether a given expression is a selector to the imported Config type
 	isCmdConfigType := func(expr ast.Expr) bool {
-		sel, ok := expr.(*ast.SelectorExpr)
-		if !ok || sel.Sel == nil || sel.Sel.Name != "Config" {
-			return false
-		}
-		id, ok := sel.X.(*ast.Ident)
-		if !ok {
-			return false
-		}
-		// Find this ident's import path
-		for _, i := range p.Imports {
-			if i.Name == id.Name && i.Path == "gorm.io/cmd/gorm/genconfig" {
-				return true
-			}
-		}
-		return false
+		return p.parseFieldType(expr, "", true) == "gorm.io/cmd/gorm/genconfig.Config"
 	}
 
-	// Case 1: explicit type on the var
-	if vs.Type != nil && isCmdConfigType(vs.Type) {
-		for _, v := range vs.Values {
-			if cl, ok := v.(*ast.CompositeLit); ok {
-				if cfg := p.parseConfigLiteral(cl); cfg != nil {
-					return cfg
-				}
-			}
-		}
-	}
-	// Case 2: type is specified on the composite literal itself
 	for _, v := range vs.Values {
 		if cl, ok := v.(*ast.CompositeLit); ok && isCmdConfigType(cl.Type) {
 			if cfg := p.parseConfigLiteral(cl); cfg != nil {
@@ -513,69 +496,29 @@ func (p *File) tryParseConfig(vs *ast.ValueSpec) *genconfig.Config {
 
 // parseConfigLiteral parses a cmd.Config composite literal into a Config value.
 func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
-	cfg := &genconfig.Config{FieldTypeMap: map[any]any{}, FieldNameMap: map[string]any{}}
-	// Build alias -> full import path map for qualifying patterns
-	aliasToPath := map[string]string{}
-	for _, im := range p.Imports {
-		aliasToPath[im.Name] = im.Path
+	cfg := &genconfig.Config{
+		FieldTypeMap: map[any]any{},
+		FieldNameMap: map[string]any{},
 	}
-	qualify := func(s string) string {
-		if s == "" {
-			return s
-		}
-		if i := strings.Index(s, "["); i >= 0 {
-			s = s[:i]
-		}
-		if idx := strings.Index(s, "."); idx > 0 {
-			alias := s[:idx]
-			rest := s[idx+1:]
-			if path := aliasToPath[alias]; path != "" {
-				return path + "." + rest
-			}
-		}
-		return s
-	}
+
 	// Helper to collect filter values from a composite literal list (e.g., []any{...})
-	collect := func(val ast.Expr, allowStructLiteral bool) []any {
-		out := []any{}
-		m, ok := val.(*ast.CompositeLit)
-		if !ok {
-			return out
-		}
-		for _, el := range m.Elts {
-			if s := strLit(el); s != "" {
-				out = append(out, qualify(s))
-				continue
-			}
-			switch ee := el.(type) {
-			case *ast.CompositeLit:
-				if allowStructLiteral {
-					if t := p.parseFieldType(ee.Type, p.Package); t != "" {
-						out = append(out, qualify(t))
-					}
-				}
-			case *ast.Ident, *ast.SelectorExpr:
-				if t := p.parseFieldType(ee.(ast.Expr), p.Package); t != "" {
-					out = append(out, qualify(t))
-				}
-			case *ast.CallExpr:
-				if t := p.parseFieldType(ee.Fun, p.Package); t != "" {
-					out = append(out, qualify(t))
+	collect := func(val ast.Expr, allowStructLiteral bool) (results []any) {
+		if m, ok := val.(*ast.CompositeLit); ok {
+			for _, el := range m.Elts {
+				if s := strLit(el); s != "" {
+					results = append(results, s)
+				} else {
+					results = append(results, p.parseFieldType(el, p.Package, true))
 				}
 			}
 		}
-		return out
+		return
 	}
 
 	for _, elt := range cl.Elts {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		keyIdent, ok := kv.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
+		kv, _ := elt.(*ast.KeyValueExpr)
+		keyIdent, _ := kv.Key.(*ast.Ident)
+
 		switch keyIdent.Name {
 		case "OutPath":
 			cfg.OutPath = strLit(kv.Value)
@@ -588,17 +531,14 @@ func (p *File) parseConfigLiteral(cl *ast.CompositeLit) *genconfig.Config {
 				for _, me := range m.Elts {
 					if pair, ok := me.(*ast.KeyValueExpr); ok {
 						// Values are wrapper type instances like JSON{} or field.Time{}
-						// Use the current file's package to qualify local identifiers
-						valType := p.parseFieldType(pair.Value, p.Package)
 						if keyIdent.Name == "FieldNameMap" {
-							// Keys are strings for FieldNameMap
-							if key := strLit(pair.Key); key != "" && valType != "" {
-								cfg.FieldNameMap[key] = valType
+							if key := strLit(pair.Key); key != "" {
+								cfg.FieldNameMap[key] = p.parseFieldType(pair.Value, p.Package, false)
 							}
 						} else {
 							// Keys are Go types for FieldTypeMap
-							if key := p.parseFieldType(pair.Key, ""); key != "" && valType != "" {
-								cfg.FieldTypeMap[key] = valType
+							if key := p.parseFieldType(pair.Key, "", true); key != "" {
+								cfg.FieldTypeMap[key] = p.parseFieldType(pair.Value, p.Package, false)
 							}
 						}
 					}
@@ -670,30 +610,23 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 			}
 		}
 
-		// Parse field type and names
-		fieldType := p.parseFieldType(field.Type, pkgName)
-
-		// Get field tag for DBName generation
-		var fieldTag string
-		if field.Tag != nil {
-			fieldTag, _ = strconv.Unquote(field.Tag.Value)
-		}
-
-		// Add fields to struct (both regular fields and relation fields)
-		// The Type() method will determine how to handle each field
+		// Add fields to struct
 		for _, n := range field.Names {
 			if n.IsExported() {
-				dbName := generateDBName(n.Name, fieldTag)
-				f := Field{
+				var fieldTag string
+				if field.Tag != nil {
+					fieldTag, _ = strconv.Unquote(field.Tag.Value)
+				}
+
+				s.Fields = append(s.Fields, Field{
 					Name:        n.Name,
-					DBName:      dbName,
-					GoType:      fieldType,
-					GoTypeAlias: reflect.StructTag(fieldTag).Get("gen"),
+					DBName:      generateDBName(n.Name, fieldTag),
+					GoType:      p.parseFieldType(field.Type, pkgName, false),
+					NamedGoType: reflect.StructTag(fieldTag).Get("gen"),
 					Tag:         fieldTag,
 					file:        p,
 					field:       field,
-				}
-				s.Fields = append(s.Fields, f)
+				})
 			}
 		}
 	}
@@ -702,83 +635,68 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 }
 
 // parseFieldType extracts the type string from an AST field type expression
-func (p *File) parseFieldType(expr ast.Expr, pkgName string) string {
+func (p *File) parseFieldType(expr ast.Expr, pkgName string, fullMode bool) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
-		// For basic Go types, don't add package prefix
-		if len(t.Name) > 0 && unicode.IsLower(rune(t.Name[0])) {
-			return t.Name
+		// Check if it's defined locally (has an Obj and is in current file)
+		if t.Obj != nil {
+			// Don't add package prefix to generic type parameters
+			// Generic type parameters have Obj.Decl as *ast.Field (from type parameter list)
+			// Regular types have Obj.Decl as *ast.TypeSpec (from type declarations)
+			if _, isField := t.Obj.Decl.(*ast.Field); isField {
+				return t.Name
+			}
+			if fullMode {
+				return p.PackagePath + "." + t.Name
+			}
+			return p.Package + "." + t.Name
 		}
 
-		if pkgName != "" {
+		if pkgName != "" && !unicode.IsLower(rune(t.Name[0])) {
+			if fullMode {
+				return p.getFullImportPath(pkgName) + "." + t.Name
+			}
 			return pkgName + "." + t.Name
 		}
 
-		// Check if this is a local type or an external type
-		// If it's a type with uppercase first letter and no package context,
-		// try to find the package it belongs to from imports
-		if len(t.Name) > 0 && unicode.IsUpper(rune(t.Name[0])) {
-			// Check if it's defined locally (has an Obj and is in current file)
-			if t.Obj != nil && p.Package != "" {
-				// Don't add package prefix to generic type parameters
-				// Generic type parameters have Obj.Decl as *ast.Field (from type parameter list)
-				// Regular types have Obj.Decl as *ast.TypeSpec (from type declarations)
-				if _, isField := t.Obj.Decl.(*ast.Field); isField {
-					return t.Name
-				}
-				return p.Package + "." + t.Name
-			}
-
-			// When pkgName is empty, use current package name for external types
-			return t.Name
-		}
 		return t.Name
 	case *ast.SelectorExpr:
 		if pkgIdent, ok := t.X.(*ast.Ident); ok {
+			if fullMode {
+				return p.getFullImportPath(pkgIdent.Name) + "." + t.Sel.Name
+			}
+
 			return pkgIdent.Name + "." + t.Sel.Name
 		}
-	case *ast.IndexExpr:
-		base := p.parseFieldType(t.X, pkgName)
-		idx := p.parseFieldType(t.Index, pkgName)
-		if base == "" || idx == "" {
-			return ""
-		}
-		return base + "[" + idx + "]"
-	case *ast.IndexListExpr:
-		base := p.parseFieldType(t.X, pkgName)
-		if base == "" {
-			return ""
-		}
-		var parts []string
-		for _, e := range t.Indices {
-			s := p.parseFieldType(e, pkgName)
-			if s == "" {
-				return ""
-			}
-			parts = append(parts, s)
-		}
-		return base + "[" + strings.Join(parts, ", ") + "]"
 	case *ast.StarExpr:
-		// Recursively handle pointer types
-		innerType := p.parseFieldType(t.X, pkgName)
+		innerType := p.parseFieldType(t.X, pkgName, fullMode)
 		return "*" + innerType
 	case *ast.ArrayType:
-		// Handle slice types like []byte
-		elementType := p.parseFieldType(t.Elt, pkgName)
+		elementType := p.parseFieldType(t.Elt, pkgName, fullMode)
 		return "[]" + elementType
 	case *ast.UnaryExpr:
 		// Dereference address-of composite literals: &Type{}
 		if t.Op == token.AND {
 			if cl, ok := t.X.(*ast.CompositeLit); ok {
-				return p.parseFieldType(cl.Type, pkgName)
+				return p.parseFieldType(cl.Type, pkgName, fullMode)
 			}
 		}
-		return p.parseFieldType(t.X, pkgName)
+		return p.parseFieldType(t.X, pkgName, fullMode)
 	case *ast.CompositeLit:
-		// Return the type string of the composite literal
-		return p.parseFieldType(t.Type, pkgName)
+		return p.parseFieldType(t.Type, pkgName, fullMode)
+	case *ast.CallExpr:
+		return p.parseFieldType(t.Fun, pkgName, fullMode)
 	}
 	return "any"
+}
+
+func (p *File) getFullImportPath(shortName string) string {
+	for _, i := range p.Imports {
+		if i.Name == shortName {
+			return i.Path
+		}
+	}
+	return shortName
 }
 
 // handleAnonymousEmbedding processes anonymous embedded fields and returns true if handled
@@ -798,20 +716,9 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 	case *ast.SelectorExpr:
 		// External package type embedding
 		if pkgIdent, ok := t.X.(*ast.Ident); ok {
-			pkgAlias := pkgIdent.Name
-			typeName := t.Sel.Name
-
-			// Find the real package path
-			pkgPath := pkgAlias
-			for _, i := range p.Imports {
-				if i.Name == pkgAlias {
-					pkgPath = i.Path
-				}
-			}
-
-			// Try to load the struct from the package
-			if st, err := p.loadStructFromPackage(pkgPath, typeName); err == nil && st != nil {
-				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: typeName}}, st, pkgAlias)
+			st, err := loadNamedStructType(findGoModDir(p.inputPath), p.getFullImportPath(pkgIdent.Name), t.Sel.Name)
+			if err == nil && st != nil {
+				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: t.Sel.Name}}, st, pkgIdent.Name)
 				s.Fields = append(s.Fields, sub.Fields...)
 				return true
 			}
@@ -824,43 +731,4 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 	}
 
 	return false
-}
-
-// loadStructFromPackage loads a struct type definition from an external package by name
-func (p *File) loadStructFromPackage(pkgPath, typeName string) (*ast.StructType, error) {
-	modPath := findGoModDir(p.inputPath)
-	cfg := &packages.Config{
-		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedImports,
-		Dir:  modPath,
-	}
-
-	pkgs, err := packages.Load(cfg, pkgPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load package %q from %v: %w", pkgPath, modPath, err)
-	}
-
-	if len(pkgs) == 0 {
-		return nil, fmt.Errorf("no packages found for path %q from %v", pkgPath, modPath)
-	}
-
-	for _, pkg := range pkgs {
-		for _, syntax := range pkg.Syntax {
-			for _, decl := range syntax.Decls {
-				gen, ok := decl.(*ast.GenDecl)
-				if !ok {
-					continue
-				}
-				for _, spec := range gen.Specs {
-					ts, ok := spec.(*ast.TypeSpec)
-					if ok && ts.Name.Name == typeName {
-						if st, ok := ts.Type.(*ast.StructType); ok {
-							return st, nil
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("struct %s not found in package %s", typeName, pkgPath)
 }
