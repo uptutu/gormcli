@@ -187,20 +187,26 @@ func (g *Generator) Gen() error {
 
 		outPath = filepath.Join(outPath, file.relPath)
 
-		fmt.Printf("Generating file %s from %s...\n", outPath, file.inputPath)
 		var results bytes.Buffer
 		if err := tmpl.Execute(&results, file); err != nil {
 			return fmt.Errorf("failed to render template %v, got error %v", file.inputPath, err)
 		}
 
-		if result, err := imports.Process(outPath, results.Bytes(), nil); err == nil {
-			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-				return fmt.Errorf("failed to create directory for %v, got error %v", outPath, err)
-			}
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			return fmt.Errorf("failed to create directory for %v, got error %v", outPath, err)
+		}
 
+		fmt.Printf("Generating file %s from %s...\n", outPath, file.inputPath)
+		if err := os.WriteFile(outPath, results.Bytes(), 0o640); err != nil {
+			return fmt.Errorf("failed to write file %v, got error %v", outPath, err)
+		}
+
+		if result, err := imports.Process(outPath, results.Bytes(), nil); err == nil {
 			if err := os.WriteFile(outPath, result, 0o640); err != nil {
 				return fmt.Errorf("failed to write file %v, got error %v", outPath, err)
 			}
+		} else {
+			return fmt.Errorf("failed to format generated code for %v, got error %v", outPath, err)
 		}
 	}
 	return nil
@@ -399,13 +405,13 @@ func (f Field) Type() string {
 	// Check if type implements allowed interfaces
 	var (
 		goType  = strings.TrimPrefix(f.GoType, "*")
-		ts      = strings.Split(goType, ".")
+		pkgIdx  = strings.LastIndex(goType, ".")
 		pkgName = f.file.Package
-		typName = f.GoType
+		typName = goType
 	)
 
-	if len(ts) > 1 {
-		pkgName, typName = ts[0], ts[1]
+	if pkgIdx > 0 {
+		pkgName, typName = goType[:pkgIdx], goType[pkgIdx+1:]
 	}
 
 	// Handle regular field types
@@ -419,7 +425,7 @@ func (f Field) Type() string {
 
 	if typ := loadNamedType(findGoModDir(f.file.inputPath), f.file.getFullImportPath(pkgName), typName); typ != nil {
 		if ImplementsAllowedInterfaces(typ) { // For interface-implementing types, use generic Field
-			return fmt.Sprintf("field.Field[%s]", goType)
+			return fmt.Sprintf("field.Field[%s]", filepath.Base(goType))
 		}
 	}
 
@@ -437,7 +443,6 @@ func (f Field) Type() string {
 // Value returns the field value string with column name for template generation
 func (f Field) Value() string {
 	fieldType := f.Type()
-
 	// Check if this is a relation field based on the type
 	if strings.HasPrefix(fieldType, "field.Struct[") {
 		return fmt.Sprintf("%s{}.WithName(%q)", fieldType, f.Name)
@@ -654,7 +659,7 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string, fullMode bool) stri
 			if _, isField := t.Obj.Decl.(*ast.Field); isField {
 				return t.Name
 			}
-			if fullMode {
+			if fullMode && p.PackagePath != "" {
 				return p.PackagePath + "." + t.Name
 			}
 			if p.Package != "" {
