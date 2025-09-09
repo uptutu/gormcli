@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -138,34 +139,43 @@ func (g *Generator) Gen() error {
 			}
 
 			filePkgPath := getCurrentPackagePath(file.inputPath)
-			matchAnyName := func(short string, patterns []any) bool {
-				return matchAny(short, patterns) || matchAny(filePkgPath+"."+short, patterns)
+			matchAnyName := func(name string, patterns []any) bool {
+				name = filePkgPath + "." + stripGeneric(name)
+				for _, p := range patterns {
+					if stripGeneric(fmt.Sprint(p)) == name {
+						return true
+					}
+					if ok, _ := filepath.Match("*"+stripGeneric(fmt.Sprint(p)), filepath.Base(name)); ok {
+						return true
+					}
+				}
+				return false
 			}
 
 			if len(incI) > 0 {
-				for _, it := range file.Interfaces {
-					if matchAnyName(it.Name, incI) {
-						file.Interfaces = append(file.Interfaces, it)
+				for i := len(file.Interfaces) - 1; i >= 0; i-- {
+					if !matchAnyName(file.Interfaces[i].Name, incI) {
+						file.Interfaces = slices.Delete(file.Interfaces, i, i+1)
 					}
 				}
 			} else if len(excI) > 0 {
-				for _, it := range file.Interfaces {
-					if !matchAnyName(it.Name, excI) {
-						file.Interfaces = append(file.Interfaces, it)
+				for i := len(file.Interfaces) - 1; i >= 0; i-- {
+					if matchAnyName(file.Interfaces[i].Name, excI) {
+						file.Interfaces = slices.Delete(file.Interfaces, i, i+1)
 					}
 				}
 			}
 
 			if len(incS) > 0 {
-				for _, st := range file.Structs {
-					if matchAnyName(st.Name, incS) {
-						file.Structs = append(file.Structs, st)
+				for i := len(file.Structs) - 1; i >= 0; i-- {
+					if !matchAnyName(file.Structs[i].Name, incS) {
+						file.Structs = slices.Delete(file.Structs, i, i+1)
 					}
 				}
 			} else if len(excS) > 0 {
-				for _, st := range file.Structs {
-					if !matchAnyName(st.Name, excS) {
-						file.Structs = append(file.Structs, st)
+				for i := len(file.Structs) - 1; i >= 0; i-- {
+					if matchAnyName(file.Structs[i].Name, excS) {
+						file.Structs = slices.Delete(file.Structs, i, i+1)
 					}
 				}
 			}
@@ -389,9 +399,9 @@ func (f Field) Type() string {
 	// Check if type implements allowed interfaces
 	var (
 		goType  = strings.TrimPrefix(f.GoType, "*")
+		ts      = strings.Split(goType, ".")
 		pkgName = f.file.Package
 		typName = f.GoType
-		ts      = strings.Split(goType, ".")
 	)
 
 	if len(ts) > 1 {
@@ -415,13 +425,13 @@ func (f Field) Type() string {
 
 	// Check if this is a relation field based on its type
 	if strings.HasPrefix(goType, "[]") {
-		elementType := strings.TrimPrefix(goType, "[]")
+		elementType := filepath.Base(strings.TrimPrefix(goType, "[]"))
 		return fmt.Sprintf("field.Slice[%s]", elementType)
 	} else if strings.Contains(goType, ".") {
-		return fmt.Sprintf("field.Struct[%s]", goType)
+		return fmt.Sprintf("field.Struct[%s]", filepath.Base(goType))
 	}
 
-	return fmt.Sprintf("field.Field[%s]", goType)
+	return fmt.Sprintf("field.Field[%s]", filepath.Base(goType))
 }
 
 // Value returns the field value string with column name for template generation
@@ -619,7 +629,7 @@ func (p *File) processStructType(typeSpec *ast.TypeSpec, data *ast.StructType, p
 				s.Fields = append(s.Fields, Field{
 					Name:        n.Name,
 					DBName:      generateDBName(n.Name, fieldTag),
-					GoType:      p.parseFieldType(field.Type, pkgName, false),
+					GoType:      p.parseFieldType(field.Type, pkgName, true),
 					NamedGoType: reflect.StructTag(fieldTag).Get("gen"),
 					Tag:         fieldTag,
 					file:        p,
@@ -668,6 +678,13 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string, fullMode bool) stri
 
 			return pkgIdent.Name + "." + t.Sel.Name
 		}
+	case *ast.IndexExpr:
+		base := p.parseFieldType(t.X, pkgName, fullMode)
+		idx := p.parseFieldType(t.Index, pkgName, fullMode)
+		if base == "" || idx == "" {
+			return ""
+		}
+		return base + "[" + idx + "]"
 	case *ast.StarExpr:
 		innerType := p.parseFieldType(t.X, pkgName, fullMode)
 		return "*" + innerType

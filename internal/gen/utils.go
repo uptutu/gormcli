@@ -202,13 +202,3 @@ func stripGeneric(s string) string {
 	}
 	return s
 }
-
-func matchAny(name string, patterns []any) bool {
-	name = stripGeneric(name)
-	for _, p := range patterns {
-		if ok, _ := filepath.Match(stripGeneric(fmt.Sprint(p)), name); ok {
-			return true
-		}
-	}
-	return false
-}

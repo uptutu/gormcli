@@ -106,7 +106,7 @@ func TestProcessStructType(t *testing.T) {
 			{Name: "ID", DBName: "id", GoType: "uint"},
 			{Name: "CreatedAt", DBName: "created_at", GoType: "time.Time"},
 			{Name: "UpdatedAt", DBName: "updated_at", GoType: "time.Time"},
-			{Name: "DeletedAt", DBName: "deleted_at", GoType: "gorm.DeletedAt"},
+			{Name: "DeletedAt", DBName: "deleted_at", GoType: "gorm.io/gorm.DeletedAt"},
 			{Name: "Name", DBName: "name", GoType: "string"},
 			{Name: "Age", DBName: "age", GoType: "int"},
 			{Name: "Birthday", DBName: "birthday", GoType: "*time.Time"},

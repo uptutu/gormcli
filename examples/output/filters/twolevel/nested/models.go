@@ -11,21 +11,3 @@ var S1 = struct {
 }{
 	ID: field.Number[int]{}.WithColumn("id"),
 }
-
-var S2 = struct {
-	ID field.Number[int]
-}{
-	ID: field.Number[int]{}.WithColumn("id"),
-}
-
-var S3 = struct {
-	ID field.Number[int]
-}{
-	ID: field.Number[int]{}.WithColumn("id"),
-}
-
-var S1 = struct {
-	ID field.Number[int]
-}{
-	ID: field.Number[int]{}.WithColumn("id"),
-}

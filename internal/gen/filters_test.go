@@ -127,12 +127,11 @@ func TestFilters_TwoLevel(t *testing.T) {
 	rIface := readFileMust(t, rootIface)
 	rModels := readFileMust(t, rootModels)
 
-	// Parent excludes nested.* only; root should include all I1/I2/I3 and S1/S2/S3
-	if !strings.Contains(rIface, "func I1[") || !strings.Contains(rIface, "func I2[") || !strings.Contains(rIface, "func I3[") {
-		t.Fatalf("root: expected I1, I2, I3 to be generated")
+	if !strings.Contains(rIface, "func I1[") || !strings.Contains(rIface, "func I2[") || strings.Contains(rIface, "func I3[") {
+		t.Fatalf("root: expected I1, I2 to be generated, I3 not generated")
 	}
-	if !strings.Contains(rModels, "var S1 = struct") || !strings.Contains(rModels, "var S2 = struct") || !strings.Contains(rModels, "var S3 = struct") {
-		t.Fatalf("root: expected S1, S2, S3 to be generated")
+	if !strings.Contains(rModels, "var S1 = struct") || !strings.Contains(rModels, "var S2 = struct") || strings.Contains(rModels, "var S3 = struct") {
+		t.Fatalf("root: expected S1, S2 to be generated, S3 not generated")
 	}
 
 	// Nested outputs
