@@ -13,3 +13,19 @@ var S1 = struct {
 	ID:   field.Number[int]{}.WithColumn("id"),
 	Name: field.String{}.WithColumn("name"),
 }
+
+var S2 = struct {
+	ID   field.Number[int]
+	Note field.String
+}{
+	ID:   field.Number[int]{}.WithColumn("id"),
+	Note: field.String{}.WithColumn("note"),
+}
+
+var S1 = struct {
+	ID   field.Number[int]
+	Name field.String
+}{
+	ID:   field.Number[int]{}.WithColumn("id"),
+	Name: field.String{}.WithColumn("name"),
+}

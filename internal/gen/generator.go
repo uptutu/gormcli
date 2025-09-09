@@ -388,22 +388,14 @@ func (f Field) Type() string {
 
 	// Check if type implements allowed interfaces
 	var (
-		goType = strings.TrimPrefix(f.GoType, "*")
-		pkg    = f.file.Package
-		typ    = goType
-		ts     = strings.Split(goType, ".")
+		goType  = strings.TrimPrefix(f.GoType, "*")
+		pkgName = f.file.Package
+		typName = f.GoType
+		ts      = strings.Split(goType, ".")
 	)
 
 	if len(ts) > 1 {
-		pkg, typ = ts[0], ts[1]
-	}
-
-	if typ := loadNamedType(findGoModDir(f.file.inputPath), p.getFullImportPath(pkg), typ); typ != nil {
-		if ImplementsAllowedInterfaces(typ) { // For interface-implementing types, use generic Field
-			return fmt.Sprintf("field.Field[%s]", goType)
-		}
-	} else {
-		fmt.Println(typ)
+		pkgName, typName = ts[0], ts[1]
 	}
 
 	// Handle regular field types
@@ -413,6 +405,12 @@ func (f Field) Type() string {
 
 	if strings.Contains(goType, "int") || strings.Contains(goType, "float") {
 		return fmt.Sprintf("field.Number[%s]", goType)
+	}
+
+	if typ := loadNamedType(findGoModDir(f.file.inputPath), f.file.getFullImportPath(pkgName), typName); typ != nil {
+		if ImplementsAllowedInterfaces(typ) { // For interface-implementing types, use generic Field
+			return fmt.Sprintf("field.Field[%s]", goType)
+		}
 	}
 
 	// Check if this is a relation field based on its type
@@ -649,7 +647,9 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string, fullMode bool) stri
 			if fullMode {
 				return p.PackagePath + "." + t.Name
 			}
-			return p.Package + "." + t.Name
+			if p.Package != "" {
+				return p.Package + "." + t.Name
+			}
 		}
 
 		if pkgName != "" && !unicode.IsLower(rune(t.Name[0])) {

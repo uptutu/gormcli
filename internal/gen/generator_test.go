@@ -124,7 +124,7 @@ func TestProcessStructType(t *testing.T) {
 			{Name: "Friends", DBName: "friends", GoType: "[]*User"},
 			{Name: "Role", DBName: "role", GoType: "string"},
 			{Name: "IsAdult", DBName: "is_adult", GoType: "bool"},
-			{Name: "Profile", DBName: "profile", GoType: "string", GoTypeAlias: "json"},
+			{Name: "Profile", DBName: "profile", GoType: "string", NamedGoType: "json"},
 		},
 	}
 
@@ -138,10 +138,7 @@ func TestProcessStructType(t *testing.T) {
 	// Only compare stable fields (Name, DBName, GoType); ignore tags/alias and internal pointers.
 	trimmed := Struct{Name: result.Name}
 	for _, f := range result.Fields {
-		if f.Name == "DeletedAt" {
-			f.Type()
-		}
-		trimmed.Fields = append(trimmed.Fields, Field{Name: f.Name, DBName: f.DBName, GoType: f.GoType, GoTypeAlias: f.GoTypeAlias})
+		trimmed.Fields = append(trimmed.Fields, Field{Name: f.Name, DBName: f.DBName, GoType: f.GoType, NamedGoType: f.NamedGoType})
 	}
 	if !reflect.DeepEqual(trimmed, expected) {
 		t.Errorf("Expected %+v, got %+v", expected, trimmed)
