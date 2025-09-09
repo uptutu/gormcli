@@ -3,6 +3,7 @@ package gen
 import (
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -257,4 +258,21 @@ func strLit(expr ast.Expr) string {
 	}
 
 	return ""
+}
+
+func stripGeneric(s string) string {
+	if i := strings.Index(s, "["); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func matchAny(name string, patterns []any) bool {
+	name = stripGeneric(name)
+	for _, p := range patterns {
+		if ok, _ := filepath.Match(stripGeneric(fmt.Sprint(p)), name); ok {
+			return true
+		}
+	}
+	return false
 }

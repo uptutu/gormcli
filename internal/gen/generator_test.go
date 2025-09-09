@@ -8,7 +8,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"text/template"
 )
+
+func TestParseTemplate(t *testing.T) {
+	if _, err := template.New("").Parse(pkgTmpl); err != nil {
+		t.Errorf("failed to parse template, got %v", err)
+	}
+}
 
 func TestGeneratorWithQueryInterface(t *testing.T) {
 	inputPath, err := filepath.Abs("../../examples/query.go")
@@ -123,6 +130,9 @@ func TestProcessStructType(t *testing.T) {
 	// Only compare stable fields (Name, DBName, GoType); ignore tags/alias and internal pointers.
 	trimmed := Struct{Name: result.Name}
 	for _, f := range result.Fields {
+		if f.Name == "DeletedAt" {
+			f.Type()
+		}
 		trimmed.Fields = append(trimmed.Fields, Field{Name: f.Name, DBName: f.DBName, GoType: f.GoType, GoTypeAlias: f.GoTypeAlias})
 	}
 	if !reflect.DeepEqual(trimmed, expected) {
