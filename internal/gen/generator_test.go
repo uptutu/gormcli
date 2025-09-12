@@ -8,7 +8,22 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"text/template"
 )
+
+func TestParseTemplate(t *testing.T) {
+	if _, err := template.New("").Parse(pkgTmpl); err != nil {
+		t.Errorf("failed to parse template, got %v", err)
+	}
+}
+
+func TestLoadNamedTypes(t *testing.T) {
+	for _, i := range allowedInterfaces {
+		if i == nil {
+			t.Fatalf("failed to load named type, got nil")
+		}
+	}
+}
 
 func TestGeneratorWithQueryInterface(t *testing.T) {
 	inputPath, err := filepath.Abs("../../examples/query.go")
@@ -91,15 +106,25 @@ func TestProcessStructType(t *testing.T) {
 			{Name: "ID", DBName: "id", GoType: "uint"},
 			{Name: "CreatedAt", DBName: "created_at", GoType: "time.Time"},
 			{Name: "UpdatedAt", DBName: "updated_at", GoType: "time.Time"},
-			{Name: "DeletedAt", DBName: "deleted_at", GoType: "gorm.DeletedAt"},
+			{Name: "DeletedAt", DBName: "deleted_at", GoType: "gorm.io/gorm.DeletedAt"},
 			{Name: "Name", DBName: "name", GoType: "string"},
 			{Name: "Age", DBName: "age", GoType: "int"},
 			{Name: "Birthday", DBName: "birthday", GoType: "*time.Time"},
+			{Name: "Score", DBName: "score", GoType: "sql.NullInt64"},
+			{Name: "LastLogin", DBName: "last_login", GoType: "sql.NullTime"},
+			{Name: "Account", DBName: "account", GoType: "Account"},
+			{Name: "Pets", DBName: "pets", GoType: "[]*Pet"},
+			{Name: "Toys", DBName: "toys", GoType: "[]Toy"},
 			{Name: "CompanyID", DBName: "company_id", GoType: "*int"},
+			{Name: "Company", DBName: "company", GoType: "Company"},
 			{Name: "ManagerID", DBName: "manager_id", GoType: "*uint"},
+			{Name: "Manager", DBName: "manager", GoType: "*User"},
+			{Name: "Team", DBName: "team", GoType: "[]User"},
+			{Name: "Languages", DBName: "languages", GoType: "[]Language"},
+			{Name: "Friends", DBName: "friends", GoType: "[]*User"},
 			{Name: "Role", DBName: "role", GoType: "string"},
 			{Name: "IsAdult", DBName: "is_adult", GoType: "bool"},
-			{Name: "Profile", DBName: "profile", GoType: "string", GoTypeAlias: "json"},
+			{Name: "Profile", DBName: "profile", GoType: "string", NamedGoType: "json"},
 		},
 	}
 
@@ -113,7 +138,7 @@ func TestProcessStructType(t *testing.T) {
 	// Only compare stable fields (Name, DBName, GoType); ignore tags/alias and internal pointers.
 	trimmed := Struct{Name: result.Name}
 	for _, f := range result.Fields {
-		trimmed.Fields = append(trimmed.Fields, Field{Name: f.Name, DBName: f.DBName, GoType: f.GoType, GoTypeAlias: f.GoTypeAlias})
+		trimmed.Fields = append(trimmed.Fields, Field{Name: f.Name, DBName: f.DBName, GoType: f.GoType, NamedGoType: f.NamedGoType})
 	}
 	if !reflect.DeepEqual(trimmed, expected) {
 		t.Errorf("Expected %+v, got %+v", expected, trimmed)

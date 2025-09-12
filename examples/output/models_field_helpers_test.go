@@ -3,7 +3,6 @@ package examples
 import (
 	"context"
 	"database/sql"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -354,6 +353,16 @@ func TestGeneratedModels_FieldTypes(t *testing.T) {
 		_ field.Bool                  = generated.User.IsAdult
 		_ examples.JSON               = generated.User.Profile
 
+		// Associations
+		_ field.Struct[models.Account] = generated.User.Account
+		_ field.Slice[models.Pet]      = generated.User.Pets
+		_ field.Slice[models.Toy]      = generated.User.Toys
+		_ field.Struct[models.Company] = generated.User.Company
+		_ field.Struct[models.User]    = generated.User.Manager
+		_ field.Slice[models.User]     = generated.User.Team
+		_ field.Slice[models.Language] = generated.User.Languages
+		_ field.Slice[models.User]     = generated.User.Friends
+
 		// Account
 		_ field.Number[uint]          = generated.Account.ID
 		_ field.Time                  = generated.Account.CreatedAt
@@ -369,6 +378,7 @@ func TestGeneratedModels_FieldTypes(t *testing.T) {
 		_ field.Field[gorm.DeletedAt] = generated.Pet.DeletedAt
 		_ field.Number[uint]          = generated.Pet.UserID
 		_ field.String                = generated.Pet.Name
+		_ field.Struct[models.Toy]    = generated.Pet.Toy
 
 		// Toy
 		_ field.Number[uint]          = generated.Toy.ID
@@ -483,27 +493,6 @@ func TestGeneratedModels_ColumnNames(t *testing.T) {
 	}
 	if col := getColumnFromExpr(generated.Language.Name.Eq("n")); col.Name != "name" {
 		t.Fatalf("Language.Name column = %q, want %q", col.Name, "name")
-	}
-}
-
-func TestGeneratedModels_NoAssociationsInFields(t *testing.T) {
-	// For User, ensure association fields are not generated as columns
-	disallowed := []string{"Account", "Pets", "Toys", "Company", "Manager", "Team", "Languages", "Friends"}
-	typ := reflect.TypeOf(generated.User)
-	for _, name := range disallowed {
-		if _, ok := typ.FieldByName(name); ok {
-			t.Fatalf("unexpected association field %q found in generated.User", name)
-		}
-	}
-
-	// For Pet, ensure Toy association is not included
-	if _, ok := reflect.TypeOf(generated.Pet).FieldByName("Toy"); ok {
-		t.Fatalf("unexpected association field %q found in generated.Pet", "Toy")
-	}
-
-	// For Account, ensure no back-reference association field (User) exists
-	if _, ok := reflect.TypeOf(generated.Account).FieldByName("User"); ok {
-		t.Fatalf("unexpected association field %q found in generated.Account", "User")
 	}
 }
 

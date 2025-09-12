@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var defaultOutPath = "./g"
+
 func New() *cobra.Command {
 	var output string
 	var input string
@@ -33,7 +35,7 @@ func New() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&output, "output", "o", "", "Directory to place generated code")
+	cmd.Flags().StringVarP(&output, "output", "o", defaultOutPath, "Directory to place generated code")
 	cmd.Flags().StringVarP(&input, "input", "i", "", "Path to Go interface file with raw SQL annotations")
 	cmd.MarkFlagRequired("input")
 

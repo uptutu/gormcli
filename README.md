@@ -1,18 +1,23 @@
 # GORM CMD
 
-**GORM CMD** is a code generation tool for Go that produces **type-safe query interfaces** and **field helper methods** for GORM.
-It eliminates runtime query errors by verifying database operations at **compile time**.
+GORM CMD generates two complementary pieces of code for your GORM projects:
+
+- Interface‑driven, type‑safe query APIs (from Go interfaces with SQL templates)
+- Model‑driven field helpers (from your model structs for filters, updates, and associations)
+
+Together they give you compile‑time safety and a fluent, discoverable API for reads and writes.
 
 ## 🚀 Features
 
-* **Type-safe Queries** – Compile-time validation of database operations
-* **SQL Templates** – Generate query methods directly from SQL template comments
-* **Field Helpers** – Auto-generated, strongly typed field accessor methods
-* **Seamless GORM Integration** – Works with existing GORM APIs out of the box
+- Type‑safe query APIs from interfaces with SQL templates
+- Model‑driven field helpers for filters, updates, ordering, and associations
+- Association operations: Create/CreateInBatch/Update/Unlink/Delete with compile‑time safety
+- Configurable generation via `genconfig.Config` (OutPath, Include/Exclude, FileLevel, Custom field mapping)
+- Seamless integration with `gorm.io/gorm`
 
 ## 📦 Installation
 
-Requires Go **1.18+** (with generics).
+Requires Go 1.18+ (generics).
 
 ```bash
 go install gorm.io/cmd/gorm@latest
@@ -20,101 +25,57 @@ go install gorm.io/cmd/gorm@latest
 
 ## ⚡ Quick Start
 
-### 1. Generate code from interfaces
+1) Write a query interface (with SQL templates) and define your models in the same package or directory.
+
+```go
+// examples/query.go
+type Query[T any] interface {
+  // SELECT * FROM @@table WHERE id=@id
+  GetByID(id int) (T, error)
+
+  // where("name=@name AND age=@age")
+  FilterByNameAndAge(name string, age int)
+}
+
+// examples/models/user.go
+type User struct {
+  gorm.Model
+  Name string
+  Age  int
+}
+```
+
+2) Generate code
 
 ```bash
-gorm gen -i ./query.go -o ./generated
+gorm gen -i ./examples -o ./generated
 ```
 
-### 2. Run type-safe queries
+3) Use the generated APIs
 
 ```go
-import "your_project/generated"
+// SELECT * FROM users WHERE id=123
+u, err := generated.Query[User](db).GetByID(ctx, 123)
 
-func Example(db *gorm.DB, ctx context.Context) {
-    // Template-based query (from interface)
-    user, err := generated.Query[User](db).GetByID(ctx, 123)
-
-    // Field-based query (using generated helpers)
-    users, err := gorm.G[User](db).
-        Where(generated.User.Age.Gt(18)).
-        Find(ctx)
-
-    fmt.Println(user, users)
-}
+// SELECT * FROM users WHERE `age` > 18
+users, err := gorm.G[User](db).Where(generated.User.Age.Gt(18)).Find(ctx)
 ```
 
----
+
+## 🔎 Two Generators, One Workflow
+
+- Query API from interfaces: write methods with SQL templates in comments; get concrete, type‑safe methods
+- Field helpers from models: generate strongly typed helpers for basic fields and associations
+
+### Field Helper Generation Rules:
+
+- Basic fields include ints/floats/string/bool/time/[]byte and named types implementing Scanner/Valuer or GORM Serializer.
+- Associations (has one/has many/belongs to/many2many, including polymorphic) become association helpers.
 
 
-## 🔎 API Overview
+## 🧪 Working With Basic Fields
 
-### Template-based Query Generation
-
-Write SQL/templating in interface method comments. Placeholders bind to method parameters automatically, and concrete, type‑safe implementations are generated.
-
-```go
-type Query[T any] interface {
-    // SELECT * FROM @@table WHERE id=@id
-    GetByID(id int) (T, error)
-
-    // SELECT * FROM @@table WHERE @@column=@value
-    FilterWithColumn(column string, value string) (T, error)
-
-    // where("name=@name AND age=@age")
-    FilterByNameAndAge(name string, age int)
-
-    // SELECT * FROM @@table
-    // {{where}}
-    //   {{if @user.Name }} name=@user.Name {{end}}
-    //   {{if @user.Age > 0}} AND age=@user.Age {{end}}
-    // {{end}}
-    SearchUsers(user User) ([]T, error)
-
-    // UPDATE @@table
-    // {{set}}
-    //   {{if user.Name != ""}} name=@user.Name, {{end}}
-    //   {{if user.Age > 0}} age=@user.Age {{end}}
-    // {{end}}
-    // WHERE id=@id
-    UpdateUser(user User, id int) error
-}
-```
-
-#### Usage
-
-Usage notes (ctx auto‑injection): if a method signature doesn’t include `ctx context.Context`, the generator adds it as the first parameter of the implementation.
-
-```go
-import "your_project/generated"
-
-func ExampleQuery(db *gorm.DB, ctx context.Context) {
-    // Get a single user by ID
-    user, err := generated.Query[User](db).GetByID(ctx, 123)
-
-    // Filter users by dynamic column and value
-    user, err := generated.Query[User](db).FilterWithColumn(ctx, "role", "admin")
-
-    // Filter users by name and age
-    users, err := generated.Query[User](db).FilterByNameAndAge("jinzhu", 25).Find(ctx)
-
-    // Conditional search using template logic
-    users, err := generated.Query[User](db).
-        SearchUsers(ctx, User{Name: "jinzhu", Age: 25})
-
-    // Update user with dynamic SET clause
-    err := generated.Query[User](db).
-        UpdateUser(ctx, updatedUser, 123)
-}
-```
-
----
-
-### Field Helper Generation
-
-Helpers are generated for “column‑like” fields on your models. These enable expressive, compile-time validated queries.
-
-#### Example Model
+Example Model
 
 ```go
 type User struct {
@@ -127,85 +88,173 @@ type User struct {
 }
 ```
 
-#### Generated Helpers
+Common predicates and setters
 
 ```go
-// Equality
-generated.User.ID.Eq(1)          // id = 1
-generated.User.ID.Neq(1)         // id != 1
-generated.User.ID.In(1, 2, 3)    // id IN (1, 2, 3)
+// Predicates
+generated.User.ID.Eq(1)                 // id = 1
+generated.User.Name.Like("%jinzhu%")    // name LIKE '%jinzhu%'
+generated.User.Age.Between(18, 65)      // age BETWEEN 18 AND 65
+generated.User.Score.IsNull()           // score IS NULL (sql.NullInt64)
 
-// String
-generated.User.Name.Like("%jinzhu%") // name LIKE '%jinzhu%'
-generated.User.Name.IsNotNull()      // name IS NOT NULL
-
-// Numeric
-generated.User.Age.Gt(18)            // age > 18
-generated.User.Age.Between(18, 65)   // age BETWEEN 18 AND 65
-
-// Nullable (Scanner/Valuer) types
-generated.User.Score.IsNull()        // score IS NULL (sql.NullInt64)
-generated.User.LastLogin.IsNotNull() // last_login IS NOT NULL (sql.NullTime)
-
-// ... more, see https://pkg.go.dev/gorm.io/cmd/gorm/field
-```
-
-#### Usage
-
-```go
-// Simple filter
+// Updates with zero‑values and expressions
 gorm.G[User](db).
-    Where(generated.User.Status.Eq("active")).
-    Find(ctx)
-
-// Multiple conditions
-gorm.G[User](db).
-    Where(generated.User.Age.Gt(18), generated.User.Status.Eq("active")).
-    Find(&users)
-
-// Update using query helpers
-gorm.G[User](db).
-    Where(generated.User.Status.Eq("pending")).
-    Update("status", "active")
-
-// Update with Set: zero values + expressions (Assigner and SetExpr)
-gorm.G[User](db).
-    Where(generated.User.Name.Eq("alice")).
-    Set(
-        generated.User.Name.Set("jinzhu"),         // name = "jinzhu"
-        generated.User.IsAdult.Set(false),         // is_adult = false (zero value)
-        generated.User.Score.Set(sql.NullInt64{}), // score = NULL (zero value)
-        generated.User.Age.Incr(1),                // age = age + 1
-        generated.User.Age.SetExpr(                // age = GREATEST(age, 18)
-            clause.Expr{SQL: "GREATEST(?, ?)", Vars: []any{clause.Column{Name: "age"}, 18}},
-        ),
-    ).
-    Update(ctx)
+  Where(generated.User.Name.Eq("alice")).
+  Set(
+    generated.User.Name.Set("jinzhu"),
+    generated.User.IsAdult.Set(false),
+    generated.User.Score.Set(sql.NullInt64{}),
+    generated.User.Age.Incr(1),
+    generated.User.Age.SetExpr(clause.Expr{SQL: "GREATEST(?, ?)", Vars: []any{clause.Column{Name: "age"}, 18}}),
+  ).
+  Update(ctx)
 
 // Create with Set
 gorm.G[User](db).
-    Set(
-        generated.User.Name.Set("alice"),  // name = "alice"
-        generated.User.Age.Set(0),         // age = 0
-        generated.User.IsAdult.Set(false), // is_adult = false
-        generated.User.Role.Set("active"), // role = "active"
-    ).
-    Create(ctx)
+  Set(
+    generated.User.Name.Set("alice"),
+    generated.User.Age.Set(0),
+    generated.User.IsAdult.Set(false),
+    generated.User.Role.Set("active"),
+  ).
+  Create(ctx)
 ```
 
----
 
-## 🧠 How Fields Are Chosen
+## 🤝 Working With Associations
 
-Helpers are generated only for “column‑like” fields; associations are skipped.
-- Included: all integers, floats, `string`, `bool`, `time.Time`, `[]byte`, and any named type implementing one of:
-  - `database/sql.Scanner`, `database/sql/driver.Valuer`
-  - `gorm.io/gorm.Valuer`, `gorm.io/gorm/schema.SerializerInterface`
-- Excluded: `has one`, `has many`, `belongs to`, `many2many`, and embedded slices/structs that represent relations
+Association helpers live on generated models as `field.Struct[T]` or `field.Slice[T]`, e.g. `generated.User.Account`, `generated.User.Pets`.
 
----
+Supported operations (composed into `Set(...).Update(ctx)` or `Set(...).Create(ctx)`):
+- Create: create and link a related row per matched parent
+- Update: update associated rows matching optional conditions
+- Unlink: remove the link only (FK NULL or delete join rows), can include conditions
+- Delete: delete associated rows (m2m deletes join rows only), can include conditions
+- CreateInBatch: batch create/link using a slice of values
 
-## 📝 Template DSL
+Examples
+
+```go
+// Create a new user and one pet (create + associate)
+gorm.G[User](db).
+  Set(
+    generated.User.Name.Set("alice"),
+    generated.User.Pets.Create(generated.Pet.Name.Set("fido")),
+  ).
+  Create(ctx)
+
+// Create a new user and link two languages (many2many)
+gorm.G[User](db).
+  Set(
+    generated.User.Name.Set("polyglot"),
+    generated.User.Languages.CreateInBatch([]models.Language{{Code: "EN"}, {Code: "FR"}}),
+  ).
+  Create(ctx)
+
+// Create one pet for each matched user (has many)
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Pets.Create(generated.Pet.Name.Set("fido"))).
+  Update(ctx)
+
+// Update a user's pet where name = 'fido'
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Pets.Where(generated.Pet.Name.Eq("fido")).
+    Update(generated.Pet.Name.Set("rex")),
+  ).
+  Update(ctx)
+
+// Unlink semantics
+// - belongs to: clears parent FK; has one/has many: clears child FK; m2m: removes join rows
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Pets.Unlink()).
+  Update(ctx)
+
+// Delete associated rows
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Pets.Delete()).
+  Update(ctx)
+
+// Unlink/Delete with conditions (filter target side before acting)
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Pets.Where(generated.Pet.Name.Eq("fido")).Unlink()).
+  Update(ctx)
+
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Pets.Where(generated.Pet.Name.Eq("old")).Delete()).
+  Update(ctx)
+
+// Batch link (has many / many2many) for an existing user
+gorm.G[User](db).
+  Where(generated.User.ID.Eq(1)).
+  Set(generated.User.Languages.CreateInBatch([]models.Language{{Code: "EN"}, {Code: "FR"}})).
+  Update(ctx)
+```
+
+Semantics by association type
+- belongs to: Unlink sets parent FK to NULL; Delete removes associated rows
+- has one / has many: Unlink sets child FK to NULL; Delete removes child rows
+- many2many: Unlink/Delete remove join rows only; both sides remain
+
+Parent operation semantics
+- Create(ctx): inserts new parent rows using values set via Set(...), then applies association operations.
+- Update(ctx): updates matched parent rows (using current Where/Select), then applies association operations.
+
+See end‑to‑end examples in `examples/output/models_relations_test.go`.
+
+
+## 🧩 Template‑based Queries
+
+Write SQL/templating in interface method comments. Placeholders bind to parameters automatically; implementations are generated and type‑safe.
+
+```go
+type Query[T any] interface {
+  // SELECT * FROM @@table WHERE id=@id
+  GetByID(id int) (T, error)
+
+  // SELECT * FROM @@table WHERE @@column=@value
+  FilterWithColumn(column string, value string) (T, error)
+
+  // SELECT * FROM @@table
+  // {{where}}
+  //   {{if @user.Name }} name=@user.Name {{end}}
+  //   {{if @user.Age > 0}} AND age=@user.Age {{end}}
+  // {{end}}
+  SearchUsers(user User) ([]T, error)
+
+  // UPDATE @@table
+  // {{set}}
+  //   {{if user.Name != ""}} name=@user.Name, {{end}}
+  //   {{if user.Age > 0}} age=@user.Age, {{end}}
+  //   {{if user.Age >= 18}} is_adult=1 {{else}} is_adult=0 {{end}}
+  // {{end}}
+  // WHERE id=@id
+  UpdateUser(user User, id int) error
+}
+```
+
+Usage notes
+- Context auto‑injection: if a method doesn’t include `ctx context.Context`, the generator adds it to the implementation signature.
+
+Example usage
+
+```go
+// SQL: SELECT * FROM users WHERE id=123
+user, err := generated.Query[User](db).GetByID(ctx, 123)
+
+// SQL: SELECT * FROM users WHERE name="jinzhu" AND age=25 (appended to current builder)
+users, err := generated.Query[User](db).FilterByNameAndAge("jinzhu", 25).Find(ctx)
+
+// SQL UPDATE users SET name="jinzhu", age=20, is_adult=1 WHERE id=1
+err := generated.Query[User](db).UpdateUser(ctx, User{Name: "jinzhu", Age: 20}, 1)
+```
+
+### 📝 Template DSL
 
 GORM CMD provides a SQL template DSL:
 
@@ -252,7 +301,6 @@ SELECT * FROM @@table
 {{end}}
 ```
 
----
 
 ## Generation Config (optional)
 

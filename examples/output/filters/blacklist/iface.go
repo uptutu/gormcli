@@ -36,30 +36,3 @@ func (e _I1Impl[T]) ByID(ctx context.Context, id int) (T, error) {
 	err := e.Raw(sb.String(), params...).Scan(ctx, &result)
 	return result, err
 }
-
-func I2[T any](db *gorm.DB, opts ...clause.Expression) _I2Interface[T] {
-	return _I2Impl[T]{
-		Interface: gorm.G[T](db, opts...),
-	}
-}
-
-type _I2Interface[T any] interface {
-	gorm.Interface[T]
-	ByName(ctx context.Context, name string) (T, error)
-}
-
-type _I2Impl[T any] struct {
-	gorm.Interface[T]
-}
-
-func (e _I2Impl[T]) ByName(ctx context.Context, name string) (T, error) {
-	var sb strings.Builder
-	params := make([]any, 0, 2)
-
-	sb.WriteString("SELECT * FROM ? WHERE name=?")
-	params = append(params, clause.Table{Name: clause.CurrentTable}, name)
-
-	var result T
-	err := e.Raw(sb.String(), params...).Scan(ctx, &result)
-	return result, err
-}

@@ -1,8 +1,10 @@
 package gen
 
 import (
-	"database/sql"
-	"database/sql/driver"
+	"bytes"
+	_ "database/sql"
+	_ "database/sql/driver"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -12,57 +14,17 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"golang.org/x/tools/go/packages"
-	"gorm.io/gorm"
+	_ "gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
 
-var (
-	allowedInterfaces []types.Type
-	namedTypesCache   = map[string]types.Type{}
-)
-
-func init() {
-	var _ sql.Scanner
-	var _ driver.Valuer
-	var _ gorm.Valuer
-	var _ schema.SerializerInterface
-
-	// Load referenced interfaces from stdlib and gorm
-	if scanner := loadNamedType("", "database/sql", "Scanner"); scanner != nil {
-		allowedInterfaces = append(allowedInterfaces, scanner)
-	}
-	if valuer := loadNamedType("", "database/sql/driver", "Valuer"); valuer != nil {
-		allowedInterfaces = append(allowedInterfaces, valuer)
-	}
-	if gormValuer := loadNamedType("", "gorm.io/gorm", "Valuer"); gormValuer != nil {
-		allowedInterfaces = append(allowedInterfaces, gormValuer)
-	}
-	if serializer := loadNamedType("", "gorm.io/gorm/schema", "SerializerInterface"); serializer != nil {
-		allowedInterfaces = append(allowedInterfaces, serializer)
-	}
-}
-
-// ImplementsAllowedInterfaces reports whether typ or *typ implements any allowed interface.
-func ImplementsAllowedInterfaces(typ types.Type) bool {
-	if typ == nil {
-		return false
-	}
-	if ptr, ok := typ.(*types.Pointer); ok {
-		typ = ptr.Elem()
-	}
-	for _, t := range allowedInterfaces {
-		iface, _ := t.Underlying().(*types.Interface)
-		if iface == nil {
-			continue
-		}
-		if types.Implements(typ, iface) || types.Implements(types.NewPointer(typ), iface) {
-			return true
-		}
-	}
-	return false
+var allowedInterfaces = []types.Type{
+	loadNamedType("", "database/sql", "Scanner"),
+	loadNamedType("", "database/sql/driver", "Valuer"),
+	loadNamedType("", "gorm.io/gorm", "Valuer"),
+	loadNamedType("", "gorm.io/gorm/schema", "SerializerInterface"),
 }
 
 type ExtractedSQL struct {
@@ -97,6 +59,20 @@ func extractSQL(comment string, methodName string) ExtractedSQL {
 	return ExtractedSQL{Raw: sql}
 }
 
+// ImplementsAllowedInterfaces reports whether typ or *typ implements any allowed interface.
+func ImplementsAllowedInterfaces(typ types.Type) bool {
+	if ptr, ok := typ.(*types.Pointer); ok {
+		typ = ptr.Elem()
+	}
+	for _, t := range allowedInterfaces {
+		iface, _ := t.Underlying().(*types.Interface)
+		if types.Implements(typ, iface) || types.Implements(types.NewPointer(typ), iface) {
+			return true
+		}
+	}
+	return false
+}
+
 func findGoModDir(filename string) string {
 	cmd := exec.Command("go", "env", "GOMOD")
 	cmd.Dir = filepath.Dir(filename)
@@ -115,50 +91,62 @@ func getCurrentPackagePath(filename string) string {
 	if err == nil && len(pkgs) > 0 && pkgs[0].PkgPath != "" {
 		return pkgs[0].PkgPath
 	}
-
-	// Fallback: derive import path from go.mod (module path + relative dir)
-	modRoot := findGoModDir(filename)
-	if modRoot == "" {
-		return ""
-	}
-	data, rerr := os.ReadFile(filepath.Join(modRoot, "go.mod"))
-	if rerr != nil {
-		return ""
-	}
-	var modulePath string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "module ") {
-			modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module "))
-			break
-		}
-	}
-	if modulePath == "" {
-		return ""
-	}
-	rel, rerr := filepath.Rel(modRoot, filepath.Dir(filename))
-	if rerr != nil || rel == "." {
-		return modulePath
-	}
-	return modulePath + "/" + filepath.ToSlash(rel)
+	return ""
 }
 
 // loadNamedType returns a named type from a package with basic caching.
 func loadNamedType(modRoot, pkgPath, name string) types.Type {
-	key := pkgPath + "." + name
-	if t, ok := namedTypesCache[key]; ok {
-		return t
+	cfg := &packages.Config{
+		Mode: packages.NeedTypes | packages.NeedName,
+		Dir:  modRoot,
 	}
-	cfg := &packages.Config{Mode: packages.NeedTypes | packages.NeedName, Dir: modRoot}
+
 	pkgs, err := packages.Load(cfg, pkgPath)
 	if err != nil || len(pkgs) == 0 || pkgs[0].Types == nil {
 		return nil
 	}
 	if obj := pkgs[0].Types.Scope().Lookup(name); obj != nil {
-		namedTypesCache[key] = obj.Type()
 		return obj.Type()
 	}
 	return nil
+}
+
+// loadStructFromPackage loads a struct type definition from an external package by name
+func loadNamedStructType(modRoot, pkgPath, name string) (*ast.StructType, error) {
+	cfg := &packages.Config{
+		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedImports,
+		Dir:  modRoot,
+	}
+
+	pkgs, err := packages.Load(cfg, pkgPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load package %q from %v: %w", pkgPath, modRoot, err)
+	}
+
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("no packages found for path %q from %v", pkgPath, modRoot)
+	}
+
+	for _, pkg := range pkgs {
+		for _, syntax := range pkg.Syntax {
+			for _, decl := range syntax.Decls {
+				gen, ok := decl.(*ast.GenDecl)
+				if !ok {
+					continue
+				}
+				for _, spec := range gen.Specs {
+					ts, ok := spec.(*ast.TypeSpec)
+					if ok && ts.Name.Name == name {
+						if st, ok := ts.Type.(*ast.StructType); ok {
+							return st, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("struct %s not found in package %s", name, pkgPath)
 }
 
 // generateDBName generates database column name using GORM's NamingStrategy and COLUMN tag.
@@ -171,42 +159,6 @@ func generateDBName(fieldName, gormTag string) string {
 	// Use GORM's NamingStrategy with IdentifierMaxLength: 64
 	ns := schema.NamingStrategy{IdentifierMaxLength: 64}
 	return ns.ColumnName("", fieldName)
-}
-
-// AllowedFieldByType returns true if the field type should be treated as a simple, allowed column type.
-// Rules:
-// - Primitive numbers, bool, string
-// - time.Time, []byte
-// - Any named type that implements one of the allowed interfaces
-func AllowedFieldByType(expr ast.Expr, pkgAlias string, imports []Import, filePath string) bool {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		name := t.Name
-		if name == "string" || name == "bool" || strings.Contains(name, "int") || strings.Contains(name, "float") {
-			return true
-		}
-	case *ast.SelectorExpr:
-		// time.Time
-		if id, ok := t.X.(*ast.Ident); ok && id.Name == "time" && t.Sel.Name == "Time" {
-			return true
-		}
-	case *ast.ArrayType:
-		// []byte
-		if id, ok := t.Elt.(*ast.Ident); ok && id.Name == "byte" {
-			return true
-		}
-	case *ast.StarExpr:
-		// Handle pointer by examining the element
-		if AllowedFieldByType(t.X, pkgAlias, imports, filePath) {
-			return true
-		}
-	}
-
-	// Fallback to interface-based checks
-	if typ := ResolveTypeFromExpr(expr, imports, filePath, pkgAlias); typ != nil {
-		return ImplementsAllowedInterfaces(typ)
-	}
-	return false
 }
 
 // mergeImports appends imports from src into dst if not already present (by Path)
@@ -230,56 +182,7 @@ func shouldSkipFile(filePath string) bool {
 	}
 
 	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return false // If we can't read the file, don't skip it
-	}
-
-	// Convert to string and check for the generated code header
-	fileContent := string(content)
-
-	// Check for the exact generated code header
-	return strings.Contains(fileContent, "// Code generated by 'gorm.io/cmd/gorm'. DO NOT EDIT.")
-}
-
-// ResolveTypeFromExpr attempts to resolve a types.Type for a field's AST expression.
-// - Supports selector expressions (pkg.Type)
-// - Supports identifiers from the current package (exported)
-// - Ignores basic built-in types (lowercase idents)
-// - Follows one level of pointers
-func ResolveTypeFromExpr(expr ast.Expr, imports []Import, filePath string, preferAlias string) types.Type {
-	aliasToPath := map[string]string{}
-	for _, i := range imports {
-		aliasToPath[i.Name] = i.Path
-	}
-	switch t := expr.(type) {
-	case *ast.Ident:
-		if len(t.Name) > 0 && unicode.IsLower(rune(t.Name[0])) {
-			return nil
-		}
-		// Try preferred alias package first (used when resolving types from external ASTs)
-		if preferAlias != "" {
-			if pkgPath := aliasToPath[preferAlias]; pkgPath != "" {
-				if tt := loadNamedType(findGoModDir(filePath), pkgPath, t.Name); tt != nil {
-					return tt
-				}
-			}
-		}
-		// Exported ident in current package
-		curr := getCurrentPackagePath(filePath)
-		if curr == "" {
-			return nil
-		}
-		return loadNamedType(findGoModDir(filePath), curr, t.Name)
-	case *ast.SelectorExpr:
-		if pkgIdent, ok := t.X.(*ast.Ident); ok {
-			if pkgPath := aliasToPath[pkgIdent.Name]; pkgPath != "" {
-				return loadNamedType(findGoModDir(filePath), pkgPath, t.Sel.Name)
-			}
-		}
-	case *ast.StarExpr:
-		return ResolveTypeFromExpr(t.X, imports, filePath, preferAlias)
-	}
-	return nil
+	return err == nil && bytes.Contains(content, []byte(codeGenHint))
 }
 
 // strLit returns the unquoted string if expr is a string literal; otherwise "".
@@ -291,4 +194,11 @@ func strLit(expr ast.Expr) string {
 	}
 
 	return ""
+}
+
+func stripGeneric(s string) string {
+	if i := strings.Index(s, "["); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
