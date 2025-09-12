@@ -48,7 +48,7 @@ type User struct {
 2) Generate code
 
 ```bash
-gorm gen -i ./examples -o ./examples/output
+gorm gen -i ./examples -o ./generated
 ```
 
 3) Use the generated APIs
@@ -57,12 +57,9 @@ gorm gen -i ./examples -o ./examples/output
 // SELECT * FROM users WHERE id=123
 u, err := generated.Query[User](db).GetByID(ctx, 123)
 
-users, err := gorm.G[User](db).
-  Where(generated.User.Age.Gt(18)).
-  Find(ctx)
+// SELECT * FROM users WHERE `age` > 18
+users, err := gorm.G[User](db).Where(generated.User.Age.Gt(18)).Find(ctx)
 ```
-
----
 
 
 ## 🔎 Two Generators, One Workflow
@@ -70,13 +67,11 @@ users, err := gorm.G[User](db).
 - Query API from interfaces: write methods with SQL templates in comments; get concrete, type‑safe methods
 - Field helpers from models: generate strongly typed helpers for basic fields and associations
 
-{% note warn %}
-**Field Helper Generation Rules:**
+### Field Helper Generation Rules:
+
 - Basic fields include ints/floats/string/bool/time/[]byte and named types implementing Scanner/Valuer or GORM Serializer.
 - Associations (has one/has many/belongs to/many2many, including polymorphic) become association helpers.
-{% endnote %}
 
----
 
 ## 🧪 Working With Basic Fields
 
@@ -125,13 +120,12 @@ gorm.G[User](db).
   Create(ctx)
 ```
 
----
 
 ## 🤝 Working With Associations
 
 Association helpers live on generated models as `field.Struct[T]` or `field.Slice[T]`, e.g. `generated.User.Account`, `generated.User.Pets`.
 
-Supported operations (composed into `Set(...).Update(ctx)`):
+Supported operations (composed into `Set(...).Update(ctx)` or `Set(...).Create(ctx)`):
 - Create: create and link a related row per matched parent
 - Update: update associated rows matching optional conditions
 - Unlink: remove the link only (FK NULL or delete join rows), can include conditions
@@ -141,6 +135,22 @@ Supported operations (composed into `Set(...).Update(ctx)`):
 Examples
 
 ```go
+// Create a new user and one pet (create + associate)
+gorm.G[User](db).
+  Set(
+    generated.User.Name.Set("alice"),
+    generated.User.Pets.Create(generated.Pet.Name.Set("fido")),
+  ).
+  Create(ctx)
+
+// Create a new user and link two languages (many2many)
+gorm.G[User](db).
+  Set(
+    generated.User.Name.Set("polyglot"),
+    generated.User.Languages.CreateInBatch([]models.Language{{Code: "EN"}, {Code: "FR"}}),
+  ).
+  Create(ctx)
+
 // Create one pet for each matched user (has many)
 gorm.G[User](db).
   Where(generated.User.ID.Eq(1)).
@@ -179,7 +189,7 @@ gorm.G[User](db).
   Set(generated.User.Pets.Where(generated.Pet.Name.Eq("old")).Delete()).
   Update(ctx)
 
-// Batch link (has many / many2many)
+// Batch link (has many / many2many) for an existing user
 gorm.G[User](db).
   Where(generated.User.ID.Eq(1)).
   Set(generated.User.Languages.CreateInBatch([]models.Language{{Code: "EN"}, {Code: "FR"}})).
@@ -191,9 +201,12 @@ Semantics by association type
 - has one / has many: Unlink sets child FK to NULL; Delete removes child rows
 - many2many: Unlink/Delete remove join rows only; both sides remain
 
+Parent operation semantics
+- Create(ctx): inserts new parent rows using values set via Set(...), then applies association operations.
+- Update(ctx): updates matched parent rows (using current Where/Select), then applies association operations.
+
 See end‑to‑end examples in `examples/output/models_relations_test.go`.
 
----
 
 ## 🧩 Template‑based Queries
 
@@ -288,7 +301,6 @@ SELECT * FROM @@table
 {{end}}
 ```
 
----
 
 ## Generation Config (optional)
 
