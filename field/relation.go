@@ -6,12 +6,12 @@ import (
 
 // Struct represents a struct field for single relationship operations
 type Struct[T any] struct {
-	name string
+	relationWithConditions[T]
 }
 
 // Slice represents a slice field for multiple relationship operations
 type Slice[T any] struct {
-	name string
+	relationWithConditions[T]
 }
 
 // relationWithConditions represents a field with conditions that can be applied to both Struct and Slice
@@ -22,12 +22,12 @@ type relationWithConditions[T any] struct {
 
 // WithName creates a new Struct with the specified field name
 func (s Struct[T]) WithName(name string) Struct[T] {
-	return Struct[T]{name: name}
+	return Struct[T]{relationWithConditions[T]{name: name}}
 }
 
 // WithName creates a new Slice with the specified field name
 func (s Slice[T]) WithName(name string) Slice[T] {
-	return Slice[T]{name: name}
+	return Slice[T]{relationWithConditions[T]{name: name}}
 }
 
 // Where adds conditions to a Struct field
@@ -46,38 +46,71 @@ func (s Slice[T]) Where(conditions ...clause.Expression) relationWithConditions[
 	}
 }
 
-// Create creates a new record in the related table
-func (s Struct[T]) Create(assignments ...clause.Assignment) clause.Expression {
-	// This is a placeholder for the actual implementation
-	return clause.Expr{SQL: "-- Create operation placeholder for " + s.name}
+// Create prepares an association create operation for a single (has one/belongs to) relation.
+// Use with Set(...).Update(ctx) to create and associate a record per matched parent.
+func (s Struct[T]) Create(assignments ...clause.Assignment) clause.Association {
+	return clause.Association{
+		Association: s.name,
+		Type:        clause.OpCreate,
+		Set:         assignments,
+	}
 }
 
 // Update updates records in the related table
-func (w relationWithConditions[T]) Update(assignments ...clause.Assignment) clause.Expression {
-	// This is a placeholder for the actual implementation
-	return clause.Expr{SQL: "-- Update operation placeholder for " + w.name}
+// Update prepares an association update operation with optional conditions.
+// Use with Set(...).Update(ctx) to update matched associated records for matched parents.
+func (w relationWithConditions[T]) Update(assignments ...clause.Assignment) clause.Association {
+	return clause.Association{
+		Association: w.name,
+		Type:        clause.OpUpdate,
+		Conditions:  w.conditions,
+		Set:         assignments,
+	}
 }
 
 // Delete removes records from the related table
-func (w relationWithConditions[T]) Delete() clause.Expression {
-	// This is a placeholder for the actual implementation
-	return clause.Expr{SQL: "-- Delete operation placeholder for " + w.name}
+// Delete prepares an association delete operation.
+// Use with Set(...).Update(ctx) to delete matched associated records for matched parents.
+func (w relationWithConditions[T]) Delete() clause.Association {
+	return clause.Association{
+		Association: w.name,
+		Type:        clause.OpDelete,
+		Conditions:  w.conditions,
+	}
 }
 
 // Unlink removes the relationship without deleting the related records
-func (w relationWithConditions[T]) Unlink() clause.Expression {
-	// This is a placeholder for the actual implementation
-	return clause.Expr{SQL: "-- Unlink operation placeholder for " + w.name}
+// Unlink prepares an association unlink operation (remove relation without deleting records).
+// For has one/has many, typically sets the foreign key to NULL; for many2many, removes join rows.
+// Use with Set(...).Update(ctx).
+func (w relationWithConditions[T]) Unlink() clause.Association {
+	return clause.Association{
+		Association: w.name,
+		Type:        clause.OpUnlink,
+		Conditions:  w.conditions,
+	}
 }
 
-// Create creates new records in the related table
-func (s Slice[T]) Create(assignments ...clause.Assignment) clause.Expression {
-	// This is a placeholder for the actual implementation
-	return clause.Expr{SQL: "-- Create operation placeholder for " + s.name}
+// Create prepares an association create operation for a slice (has many/many2many) relation.
+// Creates one associated record per matched parent using provided assignments.
+func (s Slice[T]) Create(assignments ...clause.Assignment) clause.Association {
+	return clause.Association{
+		Association: s.name,
+		Type:        clause.OpCreate,
+		Set:         assignments,
+	}
 }
 
-// CreateInBatch creates multiple records in the related table in a batch
-func (s Slice[T]) CreateInBatch(records []T) clause.Expression {
-	// This is a placeholder for the actual implementation
-	return clause.Expr{SQL: "-- CreateInBatch operation placeholder for " + s.name}
+// CreateInBatch prepares an association batch create for a slice relation.
+// Creates all provided records for each matched parent.
+func (s Slice[T]) CreateInBatch(records []T) clause.Association {
+	vals := make([]any, len(records))
+	for i := range records {
+		vals[i] = &records[i]
+	}
+	return clause.Association{
+		Association: s.name,
+		Type:        clause.OpCreate,
+		Values:      vals,
+	}
 }
