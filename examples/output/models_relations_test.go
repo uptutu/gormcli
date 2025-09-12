@@ -514,21 +514,10 @@ func TestAssociation_CreateInBatch_HasMany(t *testing.T) {
 	// Seed two pets (existing), then batch link them to the user via association
 	p1 := models.Pet{Name: "bm1"}
 	p2 := models.Pet{Name: "bm2"}
-	if err := db.Create(&[]models.Pet{p1, p2}).Error; err != nil {
-		t.Fatalf("seed pets failed: %v", err)
-	}
-	// reload to get IDs
-	var rp1, rp2 models.Pet
-	if err := db.Where("name = ?", "bm1").First(&rp1).Error; err != nil {
-		t.Fatalf("load p1 failed: %v", err)
-	}
-	if err := db.Where("name = ?", "bm2").First(&rp2).Error; err != nil {
-		t.Fatalf("load p2 failed: %v", err)
-	}
 
 	if _, err := gorm.G[models.User](db).
 		Where(generated.User.ID.Eq(u.ID)).
-		Set(generated.User.Pets.CreateInBatch([]models.Pet{{Model: rp1.Model}, {Model: rp2.Model}})).
+		Set(generated.User.Pets.CreateInBatch([]models.Pet{p1, p2})).
 		Update(ctx); err != nil {
 		t.Fatalf("batch link has-many failed: %v", err)
 	}
