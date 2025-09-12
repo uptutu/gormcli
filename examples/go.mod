@@ -1,9 +1,9 @@
-module gorm.io/cmd/gorm/examples
+module gorm.io/cli/gorm/examples
 
 go 1.24.0
 
 require (
-	gorm.io/cmd/gorm v0.0.0-00010101000000-000000000000
+	gorm.io/cli/gorm v0.0.0-00010101000000-000000000000
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
@@ -19,4 +19,4 @@ require (
 	golang.org/x/text v0.29.0 // indirect
 )
 
-replace gorm.io/cmd/gorm => ../
+replace gorm.io/cli/gorm => ../

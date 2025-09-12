@@ -1,6 +1,6 @@
-# GORM CMD
+# GORM CLI
 
-GORM CMD generates two complementary pieces of code for your GORM projects:
+GORM CLI generates two complementary pieces of code for your GORM projects:
 
 - Interface‑driven, type‑safe query APIs (from Go interfaces with SQL templates)
 - Model‑driven field helpers (from your model structs for filters, updates, and associations)
@@ -20,7 +20,7 @@ Together they give you compile‑time safety and a fluent, discoverable API for 
 Requires Go 1.18+ (generics).
 
 ```bash
-go install gorm.io/cmd/gorm@latest
+go install gorm.io/cli/gorm@latest
 ```
 
 ## ⚡ Quick Start
@@ -256,7 +256,7 @@ err := generated.Query[User](db).UpdateUser(ctx, User{Name: "jinzhu", Age: 20}, 
 
 ### 📝 Template DSL
 
-GORM CMD provides a SQL template DSL:
+GORM CLI provides a SQL template DSL:
 
 | Directive   | Purpose                            | Example                                  |
 | ----------- | ---------------------------------- | ---------------------------------------- |
@@ -311,8 +311,8 @@ package examples
 
 import (
     "database/sql"
-    "gorm.io/cmd/gorm/field"
-    "gorm.io/cmd/gorm/genconfig"
+    "gorm.io/cli/gorm/field"
+    "gorm.io/cli/gorm/genconfig"
 )
 
 var _ = genconfig.Config{
@@ -354,7 +354,7 @@ var _ = genconfig.Config{
 ```go
 package examples
 
-import "gorm.io/cmd/gorm/genconfig"
+import "gorm.io/cli/gorm/genconfig"
 
 var _ = genconfig.Config{
     OutPath: "examples/output",

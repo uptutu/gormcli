@@ -1,6 +1,6 @@
 package nested
 
-import "gorm.io/cmd/gorm/genconfig"
+import "gorm.io/cli/gorm/genconfig"
 
 // Child config excludes I3/S3 within nested directory
 var _ = genconfig.Config{

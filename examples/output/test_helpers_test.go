@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"gorm.io/cmd/gorm/examples/models"
+	"gorm.io/cli/gorm/examples/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

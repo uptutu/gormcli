@@ -1,7 +1,7 @@
 package blacklist
 
 import (
-	"gorm.io/cmd/gorm/genconfig"
+	"gorm.io/cli/gorm/genconfig"
 )
 
 // Exclude I2 and S2

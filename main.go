@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"gorm.io/cmd/gorm/internal/gen"
+	"gorm.io/cli/gorm/internal/gen"
 )
 
 func main() {

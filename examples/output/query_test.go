@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/cmd/gorm/examples/models"
+	"gorm.io/cli/gorm/examples/models"
 	"gorm.io/gorm"
 )
 

@@ -18,7 +18,7 @@ import (
 	"unicode"
 
 	"golang.org/x/tools/imports"
-	"gorm.io/cmd/gorm/genconfig"
+	"gorm.io/cli/gorm/genconfig"
 )
 
 type (
@@ -490,11 +490,11 @@ func (p *File) Visit(n ast.Node) (w ast.Visitor) {
 	return p
 }
 
-// tryParseConfig attempts to parse a gorm.io/cmd/gorm/genconfig.Config composite literal
+// tryParseConfig attempts to parse a gorm.io/cli/gorm/genconfig.Config composite literal
 // from a package-level value spec. Returns nil if not present.
 func (p *File) tryParseConfig(vs *ast.ValueSpec) *genconfig.Config {
 	isCmdConfigType := func(expr ast.Expr) bool {
-		return p.parseFieldType(expr, "", true) == "gorm.io/cmd/gorm/genconfig.Config"
+		return p.parseFieldType(expr, "", true) == "gorm.io/cli/gorm/genconfig.Config"
 	}
 
 	for _, v := range vs.Values {

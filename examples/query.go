@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"time"
 
-	"gorm.io/cmd/gorm/examples/models"
-	"gorm.io/cmd/gorm/field"
-	"gorm.io/cmd/gorm/genconfig"
+	"gorm.io/cli/gorm/examples/models"
+	"gorm.io/cli/gorm/field"
+	"gorm.io/cli/gorm/genconfig"
 )
 
 var _ = genconfig.Config{

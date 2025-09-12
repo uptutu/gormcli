@@ -1,7 +1,7 @@
 package whitelist
 
 import (
-	"gorm.io/cmd/gorm/genconfig"
+	"gorm.io/cli/gorm/genconfig"
 )
 
 // Only generate I1 and S1

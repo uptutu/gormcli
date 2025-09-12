@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/cmd/gorm/examples"
-	"gorm.io/cmd/gorm/examples/models"
-	generated "gorm.io/cmd/gorm/examples/output/models"
-	"gorm.io/cmd/gorm/field"
+	"gorm.io/cli/gorm/examples"
+	"gorm.io/cli/gorm/examples/models"
+	generated "gorm.io/cli/gorm/examples/output/models"
+	"gorm.io/cli/gorm/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

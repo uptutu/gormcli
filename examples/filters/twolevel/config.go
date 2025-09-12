@@ -1,8 +1,8 @@
 package twolevel
 
 import (
-	s "gorm.io/cmd/gorm/examples/filters/twolevel/nested"
-	"gorm.io/cmd/gorm/genconfig"
+	s "gorm.io/cli/gorm/examples/filters/twolevel/nested"
+	"gorm.io/cli/gorm/genconfig"
 )
 
 // Parent config excludes nested.I2 and nested.S2 across this directory’s subtree

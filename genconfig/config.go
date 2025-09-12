@@ -5,8 +5,8 @@ package genconfig
 // It can be declared in the source files that the generator scans, e.g.:
 //
 //	import (
-//	    gencfg "gorm.io/cmd/gorm/genconfig"
-//	    "gorm.io/cmd/gorm/field"
+//	    gencfg "gorm.io/cli/gorm/genconfig"
+//	    "gorm.io/cli/gorm/field"
 //	    "database/sql"
 //	)
 //

@@ -1,4 +1,4 @@
-module gorm.io/cmd/gorm
+module gorm.io/cli/gorm
 
 go 1.24.0
 

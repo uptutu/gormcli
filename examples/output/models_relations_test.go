@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"gorm.io/cmd/gorm/examples/models"
-	generated "gorm.io/cmd/gorm/examples/output/models"
+	"gorm.io/cli/gorm/examples/models"
+	generated "gorm.io/cli/gorm/examples/output/models"
 	"gorm.io/gorm"
 )
 
