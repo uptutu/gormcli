@@ -8,6 +8,9 @@ type Field[T any] struct {
 	column clause.Column
 }
 
+// Column returns the underlying clause.Column for selection and grouping.
+func (f Field[T]) Column() clause.Column { return f.column }
+
 // WithColumn creates a new Field[T]<T> with the specified column name.
 // This method allows you to change the column name while keeping other properties.
 //
@@ -181,4 +184,22 @@ func (f Field[T]) Desc() clause.OrderByColumn {
 //	order := field.OrderExpr("CASE WHEN ? IS NULL THEN 1 ELSE 0 END", field)
 func (f Field[T]) OrderExpr(expr string, values ...any) clause.Expression {
 	return clause.Expr{SQL: expr, Vars: values}
+}
+
+// buildSelectArg allows Field[T] to be used directly in Select(...)
+func (f Field[T]) buildSelectArg() any { return f.column }
+
+// selectExpr wraps an expression to be used in Select(...)
+type selectExpr struct{ clause.Expression }
+
+func (e selectExpr) buildSelectArg() any { return e.Expression }
+
+// As creates a column alias usable in Select(...), e.g. SELECT col AS alias
+func (f Field[T]) As(alias string) Selectable {
+	return selectExpr{clause.Expr{SQL: "? AS ?", Vars: []any{f.column, clause.Column{Name: alias}}}}
+}
+
+// SelectExpr wraps a custom expression built from this field for Select(...)
+func (f Field[T]) SelectExpr(sql string, values ...any) Selectable {
+	return selectExpr{clause.Expr{SQL: sql, Vars: values}}
 }
