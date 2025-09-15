@@ -24,8 +24,6 @@ Together they deliver **compile-time safety** and a fluent, discoverable API for
 go install gorm.io/cli/gorm@latest
 ```
 
-*(Requires Go 1.18+ for generics.)*
-
 ### 2) Define Models & a Query Interface
 
 ```go
@@ -66,9 +64,7 @@ u, err := generated.Query[User](db).GetByID(ctx, 123)
 
 // Field helpers
 // SELECT * FROM users WHERE age>18
-users, _ := gorm.G[User](db).
-  Where(generated.User.Age.Gt(18)).
-  Find(ctx)
+users, _ := gorm.G[User](db).Where(generated.User.Age.Gt(18)).Find(ctx)
 
 // Association helpers: create a user with a pet
 gorm.G[User](db).
@@ -81,27 +77,26 @@ gorm.G[User](db).
 
 ---
 
-## 🔎 Two Generators, One Workflow
+## Two Generators, One Workflow
 
 GORM CLI uses **two generators that work together** for full developer ergonomics:
 
 ### 1) Query API Generator
 
-Define methods with **SQL template comments** in Go interfaces to generate **concrete, type-safe** methods.
+Define methods with **SQL template comments** in Go interfaces to generate concrete, type-safe methods.
 
 ### 2) Field Helper Generator
 
-Generate **strongly-typed helpers** from your models to build filters, updates, ordering, and **associations** without raw SQL.
+Generate strongly-typed helpers from your models to build filters, updates, ordering, and associations without raw SQL.
 
-> **Supported types & associations (field helpers)**
->
-> * **Basics**: integers, **floats**, `string`, `bool`, `time.Time`, `[]byte`
-> * **Named/custom types** that implement `database/sql.Scanner` / `driver.Valuer` **or** GORM `Serializer`
-> * **Associations**: `has one` \*\*(including polymorphic)`, `has many` **(including polymorphic)`, `belongs to`, `many2many`
+Supported types & associations (field helpers):
+* **Basics**: integers, floats, `string`, `bool`, `time.Time`, `[]byte`
+* **Named/custom types** that implement `database/sql.Scanner` / `driver.Valuer` or GORM `Serializer`
+* **Associations**: `has one` \*\*(including polymorphic)`, `has many` **(including polymorphic)`, `belongs to`, `many2many`
 
 ---
 
-## 🧪 Working with Fields
+## Working with Fields
 
 Common predicates & setters:
 
@@ -138,7 +133,7 @@ gorm.G[User](db).
 ```
 
 > **Standard API note (`--typed=false`)**
-> The default output is strictly typed. With the **Standard API**, you keep generics but gain flexibility to mix raw conditions with helpers:
+> The default output is strictly typed. With the Standard API, you keep generics but gain flexibility to mix raw conditions with helpers:
 >
 > ```go
 > generated.Query[User](db).
@@ -149,7 +144,7 @@ gorm.G[User](db).
 
 ---
 
-## 🤝 Working with Associations
+## Working with Associations
 
 Association helpers appear on generated models as `field.Struct[T]` or `field.Slice[T]` (e.g. `generated.User.Pets`, `generated.User.Account`).
 
@@ -184,7 +179,7 @@ Semantics by association type:
 
 * **belongs to**: `Unlink` clears the parent FK; `Delete` removes associated rows
 * **has one / has many** *(including polymorphic)*: `Unlink` clears the child FK; `Delete` removes child rows
-* **many2many**: `Unlink`/`Delete` remove **join rows only** (both sides remain)
+* **many2many**: `Unlink`/`Delete` remove join rows only (both sides remain)
 
 Parent operation semantics:
 
@@ -193,7 +188,7 @@ Parent operation semantics:
 
 ---
 
-## 🧩 Template-Based Queries
+## Template-Based Queries
 
 Write SQL and light templating in interface comments; parameters bind automatically; implementations are generated and type-safe.
 
@@ -215,8 +210,8 @@ type Query[T any] interface {
   // UPDATE @@table
   // {{set}}
   //   {{if user.Name != ""}} name=@user.Name, {{end}}
-  //   {{if user.Age  >  0}} age=@user.Age,  {{end}}
-  //   {{if user.Age >= 18}} is_adult=1     {{else}} is_adult=0 {{end}}
+  //   {{if user.Age > 0}} age=@user.Age, {{end}}
+  //   {{if user.Age >= 18}} is_adult=1 {{else}} is_adult=0 {{end}}
   // {{end}}
   // WHERE id=@id
   UpdateUser(user User, id int) error
@@ -237,8 +232,9 @@ users, err := generated.Query[User](db).FilterByNameAndAge("jinzhu", 25).Find(ct
 
 // SQL UPDATE users SET name="jinzhu", age=20, is_adult=1 WHERE id=1
 err := generated.Query[User](db).UpdateUser(ctx, User{Name: "jinzhu", Age: 20}, 1)
+```
 
-### Template DSL (cheatsheet)
+### Template DSL
 
 | Directive   | Purpose                          | Example                                  |
 | ----------- | -------------------------------- | ---------------------------------------- |
