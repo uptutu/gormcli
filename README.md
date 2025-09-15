@@ -11,7 +11,7 @@ Together they give you compile-time safety and a fluent, discoverable API for al
 
 - **Interface-driven Query Generation**: Type-safe query APIs generated from Go interfaces with SQL templates
 - **Model-driven Field Helpers**: Generate helper methods from model structs for filters, updates, ordering, and associations
-- **Enhanced Type Safety**: Full compile-time safety using Go generics for all generated code (with `--typed` flag)
+- **Enhanced Type Safety**: Full compile-time safety using Go generics for all generated code (enabled by default, use `--typed=false` to disable)
 - **Association Operations**: Create/CreateInBatch/Update/Unlink/Delete with compile-time safety
 - **Configurable Generation**: Customize output via `genconfig.Config` (OutPath, Include/Exclude, FileLevel, Custom field mapping)
 - **Seamless GORM Integration**: Works smoothly with `gorm.io/gorm`
@@ -49,11 +49,11 @@ type User struct {
 2) Generate code
 
 ```bash
-# Generate standard APIs
-gorm gen -i ./examples -o ./generated
+# Generate standard APIs (with --typed=false)
+gorm gen -i ./examples -o ./generated --typed=false
 
-# Generate enhanced type-safe APIs
-gorm gen -i ./examples -o ./generated --typed
+# Generate enhanced type-safe APIs (default behavior)
+gorm gen -i ./examples -o ./generated
 ```
 
 3) Use the generated APIs
@@ -68,7 +68,7 @@ users, err := gorm.G[User](db).Where(generated.User.Age.Gt(18)).Find(ctx)
 // SELECT * FROM users WHERE `age` > 18
 u, err := generated.Query[User](db).Where(generated.User.Age.Gt(18)).Find(ctx)
 
-// Only with standard APIs (not --typed) can you mix string conditions with typed options
+// Only with standard APIs (--typed=false) can you mix string conditions with typed options
 // SELECT * FROM users WHERE name = "jinzhu" AND `age` > 18
 u, err := generated.Query[User](db).Where("name = ?", "jinzhu").Where(generated.User.Age.Gt(18)).Find(ctx)
 ```
