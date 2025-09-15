@@ -7,25 +7,14 @@ GORM CLI generates two complementary layers of code for your GORM projects:
 
 Together they deliver **compile-time safety** and a fluent, discoverable API for all database operations
 
-## ✨ Key Features
+## Key Features
 
-* **🔒 Strong Type Safety (default)**
-  Compile-time guarantees with Go generics.
-
-* **🧩 Interface-Driven Query Generation**
-  Define Go interfaces with SQL template comments to produce concrete, type-safe methods.
-
-* **🪄 Model-Based Field Helpers**
-  Generate helpers from model structs for filtering, ordering, updates, and association handling.
-
-* **🤝 Seamless GORM Integration**
-  Works natively with `gorm.io/gorm`—no runtime magic, just plain Go.
-
-* **⚙️ Flexible Configuration**
-  Customize output paths, include/exclude rules, and field mappings via `genconfig.Config`.
-
-* **🔗 Rich Association Operations**
-  Strongly-typed `Create`, `CreateInBatch`, `Update`, `Unlink`, and `Delete` for associations.
+* **Strong Type Safety (default)** — Compile-time guarantees with Go generics.
+* **Interface-Driven Query Generation** — Define Go interfaces with SQL template comments to produce concrete, type-safe methods.
+* **Model-Based Field Helpers** — Generate helpers from model structs for filtering, ordering, updates, and association handling.
+* **Seamless GORM Integration** — Works natively with `gorm.io/gorm`—no runtime magic, just plain Go.
+* **Flexible Configuration** — Customize output paths, include/exclude rules, and field mappings via `genconfig.Config`.
+* **Rich Association Operations** — Strongly-typed `Create`, `CreateInBatch`, `Update`, `Unlink`, and `Delete` for associations.
 
 ## 🚀 Quick Start
 
