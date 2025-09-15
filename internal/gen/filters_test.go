@@ -43,7 +43,7 @@ func TestFilters_Whitelist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := t.TempDir()
+	out := filepath.Join(t.TempDir(), "whitelist")
 
 	g := &Generator{Files: map[string]*File{}, outPath: out}
 	if err := g.Process(inputDir); err != nil {
@@ -78,7 +78,7 @@ func TestFilters_Blacklist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := t.TempDir()
+	out := filepath.Join(t.TempDir(), "blacklist")
 
 	g := &Generator{Files: map[string]*File{}, outPath: out}
 	if err := g.Process(inputDir); err != nil {
@@ -111,7 +111,7 @@ func TestFilters_TwoLevel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := t.TempDir()
+	out := filepath.Join(t.TempDir(), "twolevel")
 
 	g := &Generator{Files: map[string]*File{}, outPath: out}
 	if err := g.Process(inputDir); err != nil {
@@ -160,7 +160,7 @@ func TestFilters_PatternInclude(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := t.TempDir()
+	out := filepath.Join(t.TempDir(), "pattern")
 
 	g := &Generator{Files: map[string]*File{}, outPath: out}
 	if err := g.Process(inputDir); err != nil {

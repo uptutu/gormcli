@@ -28,6 +28,7 @@ type (
 		outPath string
 	}
 	File struct {
+		ToPackage         string
 		Package           string
 		PackagePath       string
 		Imports           []Import
@@ -189,6 +190,7 @@ func (g *Generator) Gen() error {
 		}
 
 		outPath = filepath.Join(outPath, file.relPath)
+		file.ToPackage = filepath.Base(filepath.Dir(outPath))
 
 		var results bytes.Buffer
 		if err := tmpl.Execute(&results, file); err != nil {
@@ -250,7 +252,7 @@ func (g *Generator) processFile(inputFile, inputRoot string) error {
 	if pkgPath := getCurrentPackagePath(inputFile); pkgPath != "" {
 		file.PackagePath = pkgPath
 		file.Imports = append(file.Imports, Import{
-			Name: file.Package,
+			Name: f.Name.Name,
 			Path: pkgPath,
 		})
 	}

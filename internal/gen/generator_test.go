@@ -36,7 +36,7 @@ func TestGeneratorWithQueryInterface(t *testing.T) {
 		t.Fatalf("failed to get absolute output path: %v", err)
 	}
 
-	outputDir := t.TempDir()
+	outputDir := filepath.Join(t.TempDir(), "output")
 
 	g := &Generator{Files: map[string]*File{}, outPath: outputDir}
 
