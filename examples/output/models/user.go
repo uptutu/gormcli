@@ -5,7 +5,6 @@ package models
 import (
 	"database/sql"
 
-	"gorm.io/cli/gorm/examples"
 	"gorm.io/cli/gorm/examples/models"
 	"gorm.io/cli/gorm/field"
 	"gorm.io/gorm"
@@ -20,7 +19,7 @@ var User = struct {
 	Age       field.Number[int]
 	Birthday  field.Time
 	Score     field.Field[sql.NullInt64]
-	LastLogin field.Time
+	LastLogin field.Field[sql.NullTime]
 	Account   field.Struct[models.Account]
 	Pets      field.Slice[models.Pet]
 	Toys      field.Slice[models.Toy]
@@ -33,7 +32,7 @@ var User = struct {
 	Friends   field.Slice[models.User]
 	Role      field.String
 	IsAdult   field.Bool
-	Profile   examples.JSON
+	Profile   field.String
 }{
 	ID:        field.Number[uint]{}.WithColumn("id"),
 	CreatedAt: field.Time{}.WithColumn("created_at"),
@@ -43,7 +42,7 @@ var User = struct {
 	Age:       field.Number[int]{}.WithColumn("age"),
 	Birthday:  field.Time{}.WithColumn("birthday"),
 	Score:     field.Field[sql.NullInt64]{}.WithColumn("score"),
-	LastLogin: field.Time{}.WithColumn("last_login"),
+	LastLogin: field.Field[sql.NullTime]{}.WithColumn("last_login"),
 	Account:   field.Struct[models.Account]{}.WithName("Account"),
 	Pets:      field.Slice[models.Pet]{}.WithName("Pets"),
 	Toys:      field.Slice[models.Toy]{}.WithName("Toys"),
@@ -56,7 +55,7 @@ var User = struct {
 	Friends:   field.Slice[models.User]{}.WithName("Friends"),
 	Role:      field.String{}.WithColumn("role"),
 	IsAdult:   field.Bool{}.WithColumn("is_adult"),
-	Profile:   examples.JSON{}.WithColumn("profile"),
+	Profile:   field.String{}.WithColumn("profile"),
 }
 
 var Account = struct {
@@ -67,7 +66,7 @@ var Account = struct {
 	UserID       field.Field[sql.NullInt64]
 	Number       field.String
 	RewardPoints field.Field[sql.NullInt64]
-	LastUsedAt   field.Time
+	LastUsedAt   field.Field[sql.NullTime]
 }{
 	ID:           field.Number[uint]{}.WithColumn("id"),
 	CreatedAt:    field.Time{}.WithColumn("created_at"),
@@ -76,7 +75,7 @@ var Account = struct {
 	UserID:       field.Field[sql.NullInt64]{}.WithColumn("user_id"),
 	Number:       field.String{}.WithColumn("number"),
 	RewardPoints: field.Field[sql.NullInt64]{}.WithColumn("reward_points"),
-	LastUsedAt:   field.Time{}.WithColumn("last_used_at"),
+	LastUsedAt:   field.Field[sql.NullTime]{}.WithColumn("last_used_at"),
 }
 
 var Pet = struct {

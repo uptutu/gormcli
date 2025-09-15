@@ -730,34 +730,50 @@ func (p *File) getFullImportPath(shortName string) string {
 
 // handleAnonymousEmbedding processes anonymous embedded fields and returns true if handled
 func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Struct) bool {
-	switch t := field.Type.(type) {
-	case *ast.Ident:
-		// Local type embedding
-		if t.Obj != nil {
-			if ts, ok := t.Obj.Decl.(*ast.TypeSpec); ok {
-				if st, ok := ts.Type.(*ast.StructType); ok {
-					sub := p.processStructType(ts, st, pkgName)
-					s.Fields = append(s.Fields, sub.Fields...)
-					return true
-				}
-			}
-		}
-	case *ast.SelectorExpr:
-		// External package type embedding
-		if pkgIdent, ok := t.X.(*ast.Ident); ok {
-			st, err := loadNamedStructType(findGoModDir(p.inputPath), p.getFullImportPath(pkgIdent.Name), t.Sel.Name)
-			if err == nil && st != nil {
-				sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: t.Sel.Name}}, st, pkgIdent.Name)
-				s.Fields = append(s.Fields, sub.Fields...)
-				return true
-			}
-		}
-	case *ast.StructType:
-		// Anonymous inline struct embedding
-		sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: "AnonymousStruct"}}, t, pkgName)
+	// Helper function to add fields from embedded struct
+	addEmbeddedFields := func(structType *ast.StructType, typeName, embeddedPkgName string) bool {
+		sub := p.processStructType(&ast.TypeSpec{Name: &ast.Ident{Name: typeName}}, structType, embeddedPkgName)
 		s.Fields = append(s.Fields, sub.Fields...)
 		return true
 	}
 
+	// Helper function to load and process external struct type
+	loadAndProcessExternalStruct := func(pkgName, typeName string) bool {
+		st, err := loadNamedStructType(findGoModDir(p.inputPath), p.getFullImportPath(pkgName), typeName)
+		if err != nil || st == nil {
+			return false
+		}
+		return addEmbeddedFields(st, typeName, pkgName)
+	}
+
+	// Unwrap pointer types to get the underlying type
+	fieldType := field.Type
+	if starExpr, ok := fieldType.(*ast.StarExpr); ok {
+		fieldType = starExpr.X
+	}
+
+	switch t := fieldType.(type) {
+	case *ast.Ident:
+		// Local type embedding (e.g., BaseStruct or *BaseStruct)
+		if t.Obj != nil {
+			if ts, ok := t.Obj.Decl.(*ast.TypeSpec); ok {
+				if st, ok := ts.Type.(*ast.StructType); ok {
+					return addEmbeddedFields(st, t.Name, pkgName)
+				}
+			}
+		}
+
+	case *ast.SelectorExpr:
+		// External package type embedding (e.g., pkg.BaseStruct or *pkg.BaseStruct)
+		if pkgIdent, ok := t.X.(*ast.Ident); ok {
+			return loadAndProcessExternalStruct(pkgIdent.Name, t.Sel.Name)
+		}
+
+	case *ast.StructType:
+		// Anonymous inline struct embedding (e.g., struct{...})
+		return addEmbeddedFields(t, "AnonymousStruct", pkgName)
+	}
+
 	return false
+
 }
