@@ -37,6 +37,7 @@ type (
 		applicableConfigs []*genconfig.Config
 		inputPath         string
 		relPath           string
+		goModDir          string // 缓存的 go mod 目录路径
 		Generator         *Generator
 	}
 	Import struct {
@@ -243,6 +244,7 @@ func (g *Generator) processFile(inputFile, inputRoot string) error {
 		Package:   f.Name.Name,
 		inputPath: inputFile,
 		relPath:   relPath,
+		goModDir:  findGoModDir(inputFile), // 初始化时缓存 go mod 目录
 		Generator: g,
 	}
 
@@ -426,7 +428,7 @@ func (f Field) Type() string {
 		return fmt.Sprintf("field.Number[%s]", goType)
 	}
 
-	if typ := loadNamedType(findGoModDir(f.file.inputPath), f.file.getFullImportPath(pkgName), typName); typ != nil {
+	if typ := loadNamedType(f.file.goModDir, f.file.getFullImportPath(pkgName), typName); typ != nil {
 		if ImplementsAllowedInterfaces(typ) { // For interface-implementing types, use generic Field
 			return fmt.Sprintf("field.Field[%s]", filepath.Base(goType))
 		}
@@ -739,7 +741,7 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 
 	// Helper function to load and process external struct type
 	loadAndProcessExternalStruct := func(pkgName, typeName string) bool {
-		st, err := loadNamedStructType(findGoModDir(p.inputPath), p.getFullImportPath(pkgName), typeName)
+		st, err := loadNamedStructType(p.goModDir, p.getFullImportPath(pkgName), typeName)
 		if err != nil || st == nil {
 			return false
 		}
