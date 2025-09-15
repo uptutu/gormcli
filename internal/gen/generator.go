@@ -777,5 +777,4 @@ func (p *File) handleAnonymousEmbedding(field *ast.Field, pkgName string, s *Str
 	}
 
 	return false
-
 }
