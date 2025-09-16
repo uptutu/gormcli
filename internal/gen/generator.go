@@ -683,7 +683,7 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string, fullMode bool) stri
 			return pkgName + "." + t.Name
 		}
 
-		if !unicode.IsLower(rune(t.Name[0])) && !strings.Contains(t.Name, ".") { // exported type and not is another package type
+		if !unicode.IsLower(rune(t.Name[0])) && !strings.Contains(t.Name, ".") { // exported type and not another package type
 			if fullMode && p.PackagePath != "" {
 				return p.PackagePath + "." + t.Name
 			}
