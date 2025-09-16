@@ -687,7 +687,10 @@ func (p *File) parseFieldType(expr ast.Expr, pkgName string, fullMode bool) stri
 			if fullMode && p.PackagePath != "" {
 				return p.PackagePath + "." + t.Name
 			}
-			return p.Package + "." + t.Name
+
+			if p.Package != "" {
+				return p.Package + "." + t.Name
+			}
 		}
 
 		return t.Name
