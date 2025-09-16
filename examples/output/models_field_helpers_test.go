@@ -346,7 +346,7 @@ func TestGeneratedModels_FieldTypes(t *testing.T) {
 		_ field.Number[int]           = generated.User.Age
 		_ field.Time                  = generated.User.Birthday
 		_ field.Field[sql.NullInt64]  = generated.User.Score
-		_ field.Field[sql.NullTime]   = generated.User.LastLogin
+		_ field.Time                  = generated.User.LastLogin
 		_ field.Number[int]           = generated.User.CompanyID
 		_ field.Number[uint]          = generated.User.ManagerID
 		_ field.String                = generated.User.Role
