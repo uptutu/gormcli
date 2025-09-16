@@ -12,7 +12,7 @@ import (
 // He speaks many languages (many to many) and has many friends (many to many - single-table)
 // His pet also has one Toy (has one - polymorphic)
 type User struct {
-	*gorm.Model
+	gorm.Model
 	Name      string
 	Age       int
 	Birthday  *time.Time
@@ -63,4 +63,9 @@ type Company struct {
 type Language struct {
 	Code string `gorm:"primarykey"`
 	Name string
+}
+
+type CreditCard struct {
+	*gorm.Model
+	Number string
 }
