@@ -69,7 +69,7 @@ func TestQueryOrder_ByNumber(t *testing.T) {
 	// For this test, we'll just verify the function can be called
 	// Since we don't have an Order model, we'll test with User model
 	queryOrder := QueryOrder[models.User](db)
-	
+
 	// This should compile and execute without error
 	_, err := queryOrder.ByNumber(context.Background(), "12345")
 	// We expect an error since there's no matching data, but the call should work

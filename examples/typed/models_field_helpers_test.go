@@ -1,4 +1,4 @@
-package examples
+package typed
 
 import (
 	"context"
@@ -126,4 +126,3 @@ func TestFieldHelpers_Create_WithSetAssignments(t *testing.T) {
 		t.Errorf("user mismatch: %+v", users[0])
 	}
 }
-
