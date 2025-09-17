@@ -37,7 +37,7 @@ type (
 		applicableConfigs []*genconfig.Config
 		inputPath         string
 		relPath           string
-		goModDir          string // 缓存的 go mod 目录路径
+		goModDir          string
 		Generator         *Generator
 	}
 	Import struct {
@@ -244,7 +244,7 @@ func (g *Generator) processFile(inputFile, inputRoot string) error {
 		Package:   f.Name.Name,
 		inputPath: inputFile,
 		relPath:   relPath,
-		goModDir:  findGoModDir(inputFile), // 初始化时缓存 go mod 目录
+		goModDir:  findGoModDir(inputFile),
 		Generator: g,
 	}
 
